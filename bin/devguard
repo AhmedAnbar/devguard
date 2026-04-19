@@ -1,0 +1,39 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+$autoloadPaths = [
+    __DIR__ . '/../vendor/autoload.php',
+    __DIR__ . '/../../../autoload.php',
+];
+
+$autoloaded = false;
+foreach ($autoloadPaths as $path) {
+    if (file_exists($path)) {
+        require_once $path;
+        $autoloaded = true;
+        break;
+    }
+}
+
+if (! $autoloaded) {
+    fwrite(STDERR, "DevGuard could not locate Composer autoload. Run `composer install`.\n");
+    exit(2);
+}
+
+use DevGuard\Core\Application;
+use DevGuard\Core\Config\ConfigLoader;
+use DevGuard\Tools\ArchitectureEnforcer\ArchitectureTool;
+use DevGuard\Tools\DeployReadiness\DeployReadinessTool;
+use DevGuard\Tools\Ping\PingTool;
+
+$config = (new ConfigLoader(__DIR__ . '/../config/devguard.php'))->load(getcwd() ?: __DIR__);
+
+$app = new Application('DevGuard', '0.1.0');
+
+$app->addTool(new PingTool());
+$app->addTool(new DeployReadinessTool($config));
+$app->addTool(new ArchitectureTool($config));
+
+exit($app->run());

@@ -1,0 +1,10 @@
+parameters:
+    level: 6
+    paths:
+        - src
+        - bin/devguard
+    excludePaths:
+        - tests/Fixtures/*
+    treatPhpDocTypesAsCertain: false
+    ignoreErrors:
+        - identifier: missingType.iterableValue

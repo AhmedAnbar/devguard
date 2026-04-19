@@ -1,0 +1,16 @@
+/vendor/
+/composer.lock
+/.phpunit.cache/
+/.phpunit.result.cache
+/phpunit.xml.local
+/.phpstan.cache/
+
+# Don't ignore .env files inside test fixtures (they're test data)
+.env
+!tests/Fixtures/**/.env
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
