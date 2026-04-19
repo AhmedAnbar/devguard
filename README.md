@@ -38,14 +38,14 @@ Failed. Address the errors above before deploying.
 ### As a project dev dependency (recommended)
 
 ```bash
-composer require --dev devguard/devguard
+composer require --dev ahmedanbar/devguard
 ./vendor/bin/devguard
 ```
 
 ### Globally
 
 ```bash
-composer global require devguard/devguard
+composer global require ahmedanbar/devguard
 devguard
 ```
 

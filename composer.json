@@ -1,5 +1,5 @@
 {
-    "name": "devguard/devguard",
+    "name": "ahmedanbar/devguard",
     "description": "Developer CLI toolkit for Laravel projects — deploy readiness scoring and architecture enforcement.",
     "type": "library",
     "license": "MIT",
