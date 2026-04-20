@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace DevGuard\Tools\EnvAudit;
 
+use DevGuard\Contracts\FixableInterface;
+use DevGuard\Contracts\FixableToolInterface;
 use DevGuard\Contracts\RuleInterface;
 use DevGuard\Contracts\ToolInterface;
 use DevGuard\Core\ProjectContext;
@@ -14,7 +16,7 @@ use DevGuard\Tools\EnvAudit\Rules\EnvExampleExistsRule;
 use DevGuard\Tools\EnvAudit\Rules\MissingEnvKeysRule;
 use DevGuard\Tools\EnvAudit\Rules\WeakAppKeyRule;
 
-final class EnvAuditTool implements ToolInterface
+final class EnvAuditTool implements ToolInterface, FixableToolInterface
 {
     /** @var array<int, RuleInterface> */
     private array $rules;
@@ -67,5 +69,14 @@ final class EnvAuditTool implements ToolInterface
         }
 
         return $report;
+    }
+
+    /** @return array<int, FixableInterface> */
+    public function fixableRules(): array
+    {
+        return array_values(array_filter(
+            $this->rules,
+            static fn ($r) => $r instanceof FixableInterface,
+        ));
     }
 }

@@ -29,6 +29,7 @@ Failed. Address the errors above before deploying.
 - **Env Audit** — `.env` vs `.env.example` consistency: missing keys, drift, weak APP_KEY.
 - **Dependency Audit** — wraps `composer audit` to surface CVEs and abandoned packages from your `composer.lock`.
 - **Git hook installer** — `devguard install-hook` adds a pre-push (or pre-commit) gate so checks block bad commits before they ship.
+- **Auto-fix** — `devguard fix deps` runs `composer update <pkg>` for each advisory; `devguard fix env` writes missing keys from `.env.example` (with backup).
 - **Interactive menu** when run with no arguments.
 - **JSON output** for CI/CD pipelines.
 - **Exit codes** that fail builds when problems are found.
@@ -72,9 +73,25 @@ devguard run deploy --path=/some/dir  # Operate on a different project
 devguard install-hook                 # Install pre-push gate
 devguard install-hook --type=pre-commit --tools=deploy --force
 
+devguard fix deps                     # Interactive: prompts per CVE
+devguard fix env --dry-run            # Preview the plan, change nothing
+devguard fix env --yes                # Apply every fix without prompting
+devguard fix all --yes                # Run every fixable tool
+
 devguard --help
 devguard --version
 ```
+
+### Auto-fix
+
+| Tool          | Fixable?       | What `devguard fix <tool>` does                              |
+|---------------|----------------|--------------------------------------------------------------|
+| `deps`        | ✅ yes         | `composer update <pkg> --with-dependencies` per advisory     |
+| `env`         | ✅ yes         | Append missing keys from `.env.example`, backup to `.env.devguard.bak` |
+| `deploy`      | ❌ not yet     | Most issues need human judgement (which queue, which cache)  |
+| `architecture`| ❌ no          | Refactoring is human work — no safe auto-fix                 |
+
+Default is interactive: every mutation prompts for `y/N`. `--dry-run` shows the plan without writing. `--yes` is for CI / when you trust the plan.
 
 ### Exit codes
 

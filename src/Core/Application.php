@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace DevGuard\Core;
 
 use DevGuard\Contracts\ToolInterface;
+use DevGuard\Core\Commands\FixCommand;
 use DevGuard\Core\Commands\InstallHookCommand;
 use DevGuard\Core\Commands\ListToolsCommand;
 use DevGuard\Core\Commands\MenuCommand;
@@ -27,6 +28,7 @@ final class Application extends SymfonyApplication
         // it'll only become a real error in Symfony 8, at which point we bump
         // the constraint to ^8.0 and migrate.)
         $this->add(new RunCommand($this->manager));
+        $this->add(new FixCommand($this->manager));
         $this->add(new ListToolsCommand($this->manager));
         $this->add(new MenuCommand($this->manager));
         $this->add(new InstallHookCommand());

@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace DevGuard\Tools\DependencyAudit\Rules;
 
+use DevGuard\Contracts\FixableInterface;
 use DevGuard\Contracts\RuleInterface;
 use DevGuard\Core\ProjectContext;
+use DevGuard\Results\Fix;
+use DevGuard\Results\FixResult;
 use DevGuard\Results\RuleResult;
 use Symfony\Component\Process\Process;
 
-final class ComposerAuditRule implements RuleInterface
+final class ComposerAuditRule implements RuleInterface, FixableInterface
 {
     public function __construct(
         private readonly string $composerBinary = 'composer',
@@ -149,5 +152,114 @@ final class ComposerAuditRule implements RuleInterface
         return in_array($severity, ['critical', 'high'], true)
             ? RuleResult::fail($this->name(), $message, 'composer.lock', null, $suggestion)
             : RuleResult::warn($this->name(), $message, 'composer.lock', null, $suggestion);
+    }
+
+    /**
+     * Walk the audit JSON and return one Fix per affected package (deduped).
+     * Multiple advisories on the same package collapse to a single update —
+     * `composer update <pkg>` resolves all advisories for that package at once.
+     *
+     * @return array<int, Fix>
+     */
+    public function proposeFixes(ProjectContext $ctx): array
+    {
+        if (! $ctx->fileExists('composer.lock')) {
+            return [];
+        }
+
+        $decoded = $this->runAudit($ctx);
+        if ($decoded === null) {
+            return [];
+        }
+
+        $advisories = is_array($decoded['advisories'] ?? null) ? $decoded['advisories'] : [];
+        $fixes = [];
+        $seen = [];
+
+        foreach ($advisories as $package => $packageAdvisories) {
+            $package = (string) $package;
+            if ($package === '' || isset($seen[$package])) {
+                continue;
+            }
+            if (! is_array($packageAdvisories) || $packageAdvisories === []) {
+                continue;
+            }
+            $seen[$package] = true;
+
+            $titles = [];
+            foreach ($packageAdvisories as $a) {
+                if (is_array($a) && isset($a['title'])) {
+                    $titles[] = (string) $a['title'];
+                }
+            }
+
+            $fixes[] = new Fix(
+                ruleName: $this->name(),
+                target: $package,
+                description: sprintf(
+                    'composer update %s --with-dependencies (resolves %d advisor%s: %s)',
+                    $package,
+                    count($titles),
+                    count($titles) === 1 ? 'y' : 'ies',
+                    implode('; ', array_slice($titles, 0, 3)) . (count($titles) > 3 ? '…' : '')
+                ),
+                payload: ['package' => $package],
+            );
+        }
+
+        return $fixes;
+    }
+
+    public function applyFix(ProjectContext $ctx, Fix $fix): FixResult
+    {
+        $package = (string) ($fix->payload['package'] ?? '');
+        if ($package === '') {
+            return FixResult::failed($fix, 'Fix payload missing package name');
+        }
+
+        $process = new Process(
+            [$this->composerBinary, 'update', $package, '--with-dependencies', '--no-interaction'],
+            $ctx->rootPath
+        );
+        // Composer's resolver can be slow on big projects — give it room.
+        $process->setTimeout((float) max($this->timeoutSeconds, 300));
+        $process->run();
+
+        if ($process->isSuccessful()) {
+            return FixResult::applied($fix, "Updated {$package}");
+        }
+
+        // Composer prints the actual reason (conflict, locked version, etc.) here.
+        $stderr = trim($process->getErrorOutput());
+        $stdout = trim($process->getOutput());
+        $reason = $stderr !== '' ? $stderr : $stdout;
+        $reason = (string) preg_replace('/\s+/', ' ', $reason);
+        if (strlen($reason) > 240) {
+            $reason = substr($reason, 0, 240) . '...';
+        }
+
+        return FixResult::failed(
+            $fix,
+            "composer update {$package} failed: " . ($reason !== '' ? $reason : 'no output')
+        );
+    }
+
+    /**
+     * Re-run the audit during proposeFixes so we work from current state, not
+     * a stale report. Returns null on parse failure (caller treats as no fixes).
+     *
+     * @return array<string, mixed>|null
+     */
+    private function runAudit(ProjectContext $ctx): ?array
+    {
+        $process = new Process(
+            [$this->composerBinary, 'audit', '--format=json', '--no-interaction'],
+            $ctx->rootPath
+        );
+        $process->setTimeout((float) $this->timeoutSeconds);
+        $process->run();
+
+        $decoded = json_decode($process->getOutput(), true);
+        return is_array($decoded) ? $decoded : null;
     }
 }
