@@ -16,11 +16,8 @@ final class ConsoleRenderer implements RendererInterface
     public function render(ToolReport $report, OutputInterface $output): void
     {
         $this->renderHeader($report, $output);
-
-        foreach ($report->results() as $result) {
-            $this->renderResult($result, $output);
-        }
-
+        $this->renderSummary($report, $output);
+        $this->renderGroupedResults($report, $output);
         $this->renderSuggestions($report, $output);
         $this->renderFooter($report, $output);
     }
@@ -39,10 +36,86 @@ final class ConsoleRenderer implements RendererInterface
         } else {
             $output->writeln(sprintf('<options=bold>%s</>', $report->title));
         }
+    }
+
+    private function renderSummary(ToolReport $report, OutputInterface $output): void
+    {
+        $counts = ['fail' => 0, 'warning' => 0, 'pass' => 0];
+        foreach ($report->results() as $r) {
+            $counts[$r->status->value]++;
+        }
+
+        $parts = [];
+        if ($counts['fail'] > 0) {
+            $parts[] = sprintf('<fg=red>%d failed</>', $counts['fail']);
+        }
+        if ($counts['warning'] > 0) {
+            $parts[] = sprintf('<fg=yellow>%d warning%s</>', $counts['warning'], $counts['warning'] === 1 ? '' : 's');
+        }
+        if ($counts['pass'] > 0) {
+            $parts[] = sprintf('<fg=green>%d passed</>', $counts['pass']);
+        }
+
+        if ($parts !== []) {
+            $output->writeln('  <fg=gray>' . implode(' · ', $parts) . '</>');
+        }
         $output->writeln('');
     }
 
-    private function renderResult(CheckResult|RuleResult $result, OutputInterface $output): void
+    private function renderGroupedResults(ToolReport $report, OutputInterface $output): void
+    {
+        $groups = $this->groupByName($report);
+        $sorted = $this->sortGroupsBySeverity($groups);
+
+        foreach ($sorted as $name => $results) {
+            if (count($results) === 1) {
+                $this->renderSingleResult($results[0], $output);
+            } else {
+                $this->renderMultiResultGroup($name, $results, $output);
+            }
+        }
+    }
+
+    /** @return array<string, array<int, CheckResult|RuleResult>> */
+    private function groupByName(ToolReport $report): array
+    {
+        $groups = [];
+        foreach ($report->results() as $r) {
+            $groups[$r->name][] = $r;
+        }
+        return $groups;
+    }
+
+    /**
+     * @param array<string, array<int, CheckResult|RuleResult>> $groups
+     * @return array<string, array<int, CheckResult|RuleResult>>
+     */
+    private function sortGroupsBySeverity(array $groups): array
+    {
+        uasort($groups, function (array $a, array $b): int {
+            return $this->worstSeverityRank($b) <=> $this->worstSeverityRank($a);
+        });
+        return $groups;
+    }
+
+    /** @param array<int, CheckResult|RuleResult> $results */
+    private function worstSeverityRank(array $results): int
+    {
+        $worst = 0;
+        foreach ($results as $r) {
+            $rank = match ($r->status) {
+                Status::Fail => 2,
+                Status::Warning => 1,
+                Status::Pass => 0,
+            };
+            if ($rank > $worst) {
+                $worst = $rank;
+            }
+        }
+        return $worst;
+    }
+
+    private function renderSingleResult(CheckResult|RuleResult $result, OutputInterface $output): void
     {
         $color = $result->status->color();
         $icon = $result->status->icon();
@@ -64,6 +137,35 @@ final class ConsoleRenderer implements RendererInterface
         $output->writeln($line);
     }
 
+    /** @param array<int, CheckResult|RuleResult> $results */
+    private function renderMultiResultGroup(string $name, array $results, OutputInterface $output): void
+    {
+        $worst = match ($this->worstSeverityRank($results)) {
+            2 => Status::Fail,
+            1 => Status::Warning,
+            default => Status::Pass,
+        };
+
+        $output->writeln(sprintf(
+            '  <fg=%s>%s</> <options=bold>%s</> <fg=gray>(%d violations)</>',
+            $worst->color(),
+            $worst->icon(),
+            $name,
+            count($results),
+        ));
+
+        foreach ($results as $r) {
+            if ($r instanceof RuleResult && $r->file !== null) {
+                $location = $r->file . ($r->line !== null ? ':' . $r->line : '');
+                $output->writeln(sprintf('      <fg=gray>•</> <fg=gray>%s</>', $location));
+                $output->writeln(sprintf('        %s', $r->message));
+            } else {
+                $output->writeln(sprintf('      <fg=gray>•</> %s', $r->message));
+            }
+        }
+        $output->writeln('');
+    }
+
     private function renderSuggestions(ToolReport $report, OutputInterface $output): void
     {
         $suggestions = $report->suggestions();
@@ -71,10 +173,29 @@ final class ConsoleRenderer implements RendererInterface
             return;
         }
 
-        $output->writeln('');
-        $output->writeln('<options=bold>Suggestions:</>');
+        // Deduplicate by suggestion text — many violations of the same rule share identical advice.
+        $unique = [];
+        $seen = [];
         foreach ($suggestions as $r) {
-            $output->writeln(sprintf('  <fg=cyan>→</> %s', $r->suggestion));
+            $text = $r->suggestion ?? '';
+            if ($text === '' || isset($seen[$text])) {
+                continue;
+            }
+            $seen[$text] = true;
+            $unique[] = $text;
+        }
+
+        if ($unique === []) {
+            return;
+        }
+
+        $output->writeln('');
+        $countLabel = count($unique) === count($suggestions)
+            ? ''
+            : sprintf(' <fg=gray>(%d unique)</>', count($unique));
+        $output->writeln('<options=bold>Suggestions:</>' . $countLabel);
+        foreach ($unique as $text) {
+            $output->writeln(sprintf('  <fg=cyan>→</> %s', $text));
         }
     }
 
@@ -82,7 +203,17 @@ final class ConsoleRenderer implements RendererInterface
     {
         $output->writeln('');
         if ($report->hasFailures()) {
-            $output->writeln('<fg=red;options=bold>Failed.</> Address the errors above before deploying.');
+            $failureCount = 0;
+            foreach ($report->results() as $r) {
+                if ($r->status === Status::Fail) {
+                    $failureCount++;
+                }
+            }
+            $output->writeln(sprintf(
+                '<fg=red;options=bold>Failed.</> %d issue%s to address.',
+                $failureCount,
+                $failureCount === 1 ? '' : 's'
+            ));
         } elseif ($report->hasWarnings()) {
             $output->writeln('<fg=yellow;options=bold>Passed with warnings.</>');
         } else {
