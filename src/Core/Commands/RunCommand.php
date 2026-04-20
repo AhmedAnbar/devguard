@@ -24,17 +24,27 @@ final class RunCommand extends Command
 
     protected function configure(): void
     {
+        // 'tool' is OPTIONAL (validated below) because Symfony's auto-merged
+        // application 'command' argument is also optional — Symfony rejects
+        // a required argument that follows an optional one.
         $this
-            ->addArgument('tool', InputArgument::REQUIRED, 'Tool name (e.g. deploy, architecture, all)')
+            ->addArgument('tool', InputArgument::OPTIONAL, 'Tool name (e.g. deploy, architecture, all)')
             ->addOption('json', null, InputOption::VALUE_NONE, 'Output as JSON (CI-friendly)')
             ->addOption('path', 'p', InputOption::VALUE_REQUIRED, 'Project path (default: current directory)', getcwd());
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $toolName = (string) $input->getArgument('tool');
+        $toolName = (string) ($input->getArgument('tool') ?? '');
         $path = (string) $input->getOption('path');
         $jsonMode = (bool) $input->getOption('json');
+
+        if ($toolName === '') {
+            $output->writeln('<fg=red>Error:</> The "tool" argument is required.');
+            $output->writeln('Try <fg=cyan>devguard tools</> to list available tools,');
+            $output->writeln('or <fg=cyan>devguard run all</> to run every registered tool.');
+            return Command::INVALID;
+        }
 
         try {
             $context = ProjectContext::detect($path);

@@ -19,7 +19,9 @@ it('reports its version', function () {
     $r = runDevguard(['--version']);
     expect($r['exit'])->toBe(0);
     expect($r['stdout'])->toContain('DevGuard');
-    expect($r['stdout'])->toContain('0.1.0');
+    // Version string is dynamic (Composer\InstalledVersions); just sanity-check
+    // that *some* version follows the app name.
+    expect($r['stdout'])->toMatch('/DevGuard\s+\S+/');
 });
 
 it('lists registered tools', function () {
