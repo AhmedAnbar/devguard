@@ -132,7 +132,7 @@ final class RunCommand extends Command
      */
     private function writeHtmlReport(array $reports, string $projectPath, string $path, OutputInterface $output, bool $autoOpen): int
     {
-        $version = '0.4.0';
+        $version = '0.4.1';
         try {
             $installed = InstalledVersions::getPrettyVersion('ahmedanbar/devguard');
             if (is_string($installed) && $installed !== '') {
@@ -197,9 +197,19 @@ final class RunCommand extends Command
         try {
             $process = new Process($cmd);
             $process->setTimeout(5);
-            // Fire-and-forget: the OS open commands return in milliseconds
-            // (the browser is spawned as a detached process by the OS itself).
-            $process->start();
+            // Synchronous run: `open` / `xdg-open` / `start` all hand the file
+            // to the OS and return in milliseconds, so blocking is fine.
+            // We tried Process->start() (async) in v0.4.0 — PHP exited before
+            // Symfony's cleanup spawned the child, so nothing happened.
+            $process->run();
+            if (! $process->isSuccessful()) {
+                $stderr = trim($process->getErrorOutput());
+                $output->writeln(sprintf(
+                    '<fg=gray>(could not auto-open browser: exit %d%s)</>',
+                    $process->getExitCode() ?? -1,
+                    $stderr !== '' ? ' — ' . $stderr : ''
+                ));
+            }
         } catch (\Throwable $e) {
             // Browser open is a nice-to-have; don't make it fatal.
             $output->writeln(sprintf('<fg=gray>(could not auto-open browser: %s)</>', $e->getMessage()));
