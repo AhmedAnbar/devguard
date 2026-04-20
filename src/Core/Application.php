@@ -21,10 +21,15 @@ final class Application extends SymfonyApplication
 
         $this->manager = new ToolManager();
 
-        $this->addCommand(new RunCommand($this->manager));
-        $this->addCommand(new ListToolsCommand($this->manager));
-        $this->addCommand(new MenuCommand($this->manager));
-        $this->addCommand(new InstallHookCommand());
+        // NOTE: We use add() not addCommand(). addCommand() only exists in
+        // symfony/console 7.4+, and our constraint allows 7.0+. add() works on
+        // every 7.x version (deprecation warning since 7.4 is acceptable —
+        // it'll only become a real error in Symfony 8, at which point we bump
+        // the constraint to ^8.0 and migrate.)
+        $this->add(new RunCommand($this->manager));
+        $this->add(new ListToolsCommand($this->manager));
+        $this->add(new MenuCommand($this->manager));
+        $this->add(new InstallHookCommand());
 
         $this->setDefaultCommand('menu');
     }
