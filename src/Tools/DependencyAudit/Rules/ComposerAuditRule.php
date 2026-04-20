@@ -43,24 +43,29 @@ final class ComposerAuditRule implements RuleInterface
 
         $exit = $process->getExitCode() ?? 0;
         $stdout = $process->getOutput();
+        $stderr = $process->getErrorOutput();
 
-        // Composer exit codes for `audit`:
-        //   0 = no advisories
-        //   1 = advisories found (we still parse the JSON)
-        //   anything else = real error (composer missing, network, malformed lock, ...)
-        if ($exit > 1) {
+        // composer audit's exit code is a SEVERITY BITMASK, not a failure flag:
+        //   1 = high-severity advisories present
+        //   2 = medium
+        //   4 = low
+        //   8 = abandoned packages
+        // Any combination is OR'd. Exit 7 = high+medium+low, etc.
+        // The scan itself succeeded as long as we can parse the JSON output.
+        $decoded = json_decode($stdout, true);
+
+        if (! is_array($decoded)) {
+            // Genuinely failed — composer crashed, network died, json was empty.
+            $detail = $this->summariseFailure($exit, $stdout, $stderr);
             return [RuleResult::fail(
                 $this->name(),
-                'composer audit failed: ' . trim($process->getErrorOutput() ?: 'unknown error'),
+                "composer audit failed (exit {$exit}): {$detail}",
                 null,
                 null,
-                'Verify `composer` is on PATH and `composer audit` runs cleanly outside DevGuard first.'
+                'Run `composer audit` directly in this directory to see the full error. ' .
+                'Common causes: composer < 2.4 (which lacks the audit command), missing composer.lock, ' .
+                'or no network access to packagist.org.'
             )];
-        }
-
-        $decoded = json_decode($stdout, true);
-        if (! is_array($decoded)) {
-            return [RuleResult::pass($this->name(), 'No advisories reported by composer audit')];
         }
 
         $advisories = is_array($decoded['advisories'] ?? null) ? $decoded['advisories'] : [];
@@ -98,6 +103,25 @@ final class ComposerAuditRule implements RuleInterface
         }
 
         return $results;
+    }
+
+    /**
+     * Combine the most useful bits of stderr/stdout into a one-line summary
+     * for surfacing in the report when composer audit fails.
+     */
+    private function summariseFailure(int $exit, string $stdout, string $stderr): string
+    {
+        // Composer often writes the actual error to STDOUT when --format=json is set
+        // (because stderr is reserved for warnings). Try stderr first, then stdout.
+        $raw = trim($stderr) !== '' ? trim($stderr) : trim($stdout);
+
+        if ($raw === '') {
+            return "no output captured (composer may be too old; `composer audit` was added in 2.4.0)";
+        }
+
+        // Collapse whitespace and truncate so the report stays readable.
+        $cleaned = (string) preg_replace('/\s+/', ' ', $raw);
+        return strlen($cleaned) > 240 ? substr($cleaned, 0, 240) . '...' : $cleaned;
     }
 
     /** @param array<string, mixed> $advisory */
