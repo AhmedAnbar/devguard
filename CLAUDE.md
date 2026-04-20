@@ -6,7 +6,7 @@ Context for Claude Code when working in this repo. Keep this file in sync with r
 
 ## What this is
 
-**DevGuard** is a modular PHP CLI toolkit for Laravel projects. Four tools + a hook installer + an auto-fix command ship today:
+**DevGuard** is a modular PHP CLI toolkit for Laravel projects. Four tools + a hook installer + an auto-fix command + an HTML reporter ship today:
 
 1. **Deploy Readiness Score** (`deploy`) — 7 production-readiness checks, weighted 0–100 score
 2. **Laravel Architecture Enforcer** (`architecture`) — 6 clean-architecture rules with AST-based detection
@@ -14,6 +14,7 @@ Context for Claude Code when working in this repo. Keep this file in sync with r
 4. **Dependency Audit** (`deps`) — wraps `composer audit` for CVE + abandoned-package detection
 5. **`devguard install-hook`** — installs a git pre-commit/pre-push hook that runs the tools as a gate
 6. **`devguard fix <tool>`** — auto-fixes supported issues: `fix deps` runs `composer update` per CVE, `fix env` appends missing keys from `.env.example` with a `.env.devguard.bak` backup. Architecture is intentionally non-fixable.
+7. **HTML report** — `devguard run <tool> --html[=path]` writes a self-contained styled HTML page (inline CSS, no JS, no CDN) and auto-opens it in the default browser (`open` / `xdg-open` / `start`). Skips auto-open when `CI` env var is set, on unsupported OSes, or when `--no-open` is passed. Renderer lives at `src/Core/Output/HtmlRenderer.php`. Doesn't implement `RendererInterface` because that's single-report streaming; HTML needs collect-then-emit (multi-tool pages, score rings, grouped results).
 
 Designed for adding more tools without touching the framework code.
 
@@ -169,6 +170,8 @@ The `v1` rolling tag is the **only** place a force-push is normal — users pin 
 9. **`composer audit`'s exit code is a severity bitmask, not a failure flag.** 1=high, 2=medium, 4=low, 8=abandoned, OR'd together. v0.2.0 treated `exit > 1` as "command failed" and discarded the JSON before parsing it — meaning a project with low/medium-only advisories silently got "unknown error" instead of the actual list of CVEs. Always parse the JSON first; treat unparseable output as the real failure signal, not a non-zero exit code.
 10. **`vlucas/phpdotenv` strips `#`-comments at parse time.** A test for `LOG_PATH=/var/log#dev` round-tripping through the env fixer failed because the loader returned `/var/log` — the `#dev` was gone before the rule ever saw it. When testing env-file behavior, pick values that survive parsing: spaces, single/double quotes, tabs. Don't write tests that require escaping `#`, because the parser will have already stripped them.
 11. **Two-phase contracts for mutating operations.** `FixableInterface` splits `proposeFixes()` (read-only plan) from `applyFix()` (mutation). This lets `FixCommand` render a dry-run preview, prompt per fix, and handle per-fix failures without the rule knowing about the UI. Any future mutating feature should follow this split — don't let a rule propose *and* apply in one call.
+12. **For 0.x packages, the caret operator pins to the *minor*, not the major.** `^0.2` resolves to `>=0.2.0 <0.3.0`, so a user pinned at `^0.2` will *never* get v0.3.0 from `composer global update`. Mirror image of lesson #2 (publishing) — same fix recipe (`^0.1 || ^0.2 || ^0.3`), but on the consumer side. When telling users to upgrade across a 0.x minor boundary, give them the explicit `composer global require ahmedanbar/devguard:"^0.1 || ^0.2 || ^0.3"` line, not just "run composer update".
+13. **HTML/JSON renderers don't share an interface.** `RendererInterface` is single-report streaming-to-OutputInterface (suits Console + JSON). `HtmlRenderer` is collect-then-emit, takes an array of reports, returns a string — fundamentally different shape because of multi-tool pages. Don't try to force it under the same interface; the cost is extra ceremony for zero benefit. Both `JsonRenderer` and `HtmlRenderer` happen to be invoked by RunCommand directly because they're exit-format-specific, not stream-the-result-as-it-runs renderers like the console one.
 
 ---
 
@@ -188,19 +191,20 @@ Author / maintainer: **Ahmed Anbar** (begnulinux@gmail.com), GitHub `AhmedAnbar`
 
 ## Current state
 
-- CLI last tagged: **v0.2.2** on Packagist (composer audit bitmask fix)
-- **v0.3.0 in progress on main** — `devguard fix` command for auto-fixable rules (deps, env)
+- CLI last tagged: **v0.3.0** on Packagist (devguard fix command)
+- **v0.4.0 in progress on main** — `--html` flag for self-contained HTML reports
 - Action shipped: **v1.0.2** on Marketplace (rolling tag: `v1`)
 - CI: 4 jobs, all green (`PHP 8.2`, `PHP 8.3`, `action-smoke-pass`, `action-smoke-fail`)
-- Tests: 52 passed, 146 assertions
-- Real-world tested: yes, surfaced and fixed real issues on Ahmed's Laravel project
-- Packagist auto-update webhook: **TBD — verify it's configured** at https://packagist.org/packages/ahmedanbar/devguard
+- Tests: 57 passed, 166 assertions
+- Real-world tested: yes, surfaced and fixed real issues on Ahmed's Laravel project (joodv2)
+- **Major event 2026-04-20**: full git-history rewrite — every `Co-Authored-By: Claude` trailer stripped from all 12 commits, all 8 tags force-pushed. Existing `composer.lock` references to old SHAs need `composer update ahmedanbar/devguard` to recover.
+- Packagist auto-update webhook: **STILL TBD** — verify at https://packagist.org/packages/ahmedanbar/devguard
 
 ## Open / next moves
 
-* Tag and release **v0.3.0** (the `fix` command)
+* Tag and release **v0.4.0** (the `--html` reporter)
 * Verify Packagist auto-update webhook is on (so future tags publish themselves)
-* Create GitHub Releases for `v0.1.x`, `v0.2.x`, and `v0.3.0` (currently tags only, no Release pages)
+* Create GitHub Releases for past tags (currently tags only, no Release pages)
 * Add badges to README (CI status, Packagist version, downloads, license)
 * Phase 5 candidates (pick when there's appetite):
   - **Baseline file** — let teams adopt on legacy projects without fixing 200 issues on day one

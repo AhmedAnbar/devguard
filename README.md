@@ -32,6 +32,7 @@ Failed. Address the errors above before deploying.
 - **Auto-fix** — `devguard fix deps` runs `composer update <pkg>` for each advisory; `devguard fix env` writes missing keys from `.env.example` (with backup).
 - **Interactive menu** when run with no arguments.
 - **JSON output** for CI/CD pipelines.
+- **HTML report** — `--html` writes a self-contained, styled page (no CDN, no JS) you can email, archive as a CI artifact, or open locally.
 - **Exit codes** that fail builds when problems are found.
 - **Zero config** — works out of the box; override per-project via `devguard.php`.
 
@@ -68,6 +69,9 @@ devguard run env                      # .env vs .env.example audit
 devguard run deps                     # composer audit wrapper
 devguard run all                      # Run every tool sequentially
 devguard run deploy --json            # JSON output (CI-friendly)
+devguard run deploy --html            # Write devguard-report.html, auto-open in browser
+devguard run all --html=report.html   # Combined HTML page (all tools, one file)
+devguard run deploy --html --no-open  # Skip the browser auto-open (CI / scripts)
 devguard run deploy --path=/some/dir  # Operate on a different project
 
 devguard install-hook                 # Install pre-push gate
