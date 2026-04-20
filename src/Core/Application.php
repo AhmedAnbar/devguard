@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace DevGuard\Core;
 
 use DevGuard\Contracts\ToolInterface;
+use DevGuard\Core\Commands\InstallHookCommand;
 use DevGuard\Core\Commands\ListToolsCommand;
 use DevGuard\Core\Commands\MenuCommand;
 use DevGuard\Core\Commands\RunCommand;
@@ -20,9 +21,10 @@ final class Application extends SymfonyApplication
 
         $this->manager = new ToolManager();
 
-        $this->add(new RunCommand($this->manager));
-        $this->add(new ListToolsCommand($this->manager));
-        $this->add(new MenuCommand($this->manager));
+        $this->addCommand(new RunCommand($this->manager));
+        $this->addCommand(new ListToolsCommand($this->manager));
+        $this->addCommand(new MenuCommand($this->manager));
+        $this->addCommand(new InstallHookCommand());
 
         $this->setDefaultCommand('menu');
     }

@@ -25,14 +25,16 @@ if (! $autoloaded) {
 use DevGuard\Core\Application;
 use DevGuard\Core\Config\ConfigLoader;
 use DevGuard\Tools\ArchitectureEnforcer\ArchitectureTool;
+use DevGuard\Tools\DependencyAudit\DependencyAuditTool;
 use DevGuard\Tools\DeployReadiness\DeployReadinessTool;
+use DevGuard\Tools\EnvAudit\EnvAuditTool;
 use DevGuard\Tools\Ping\PingTool;
 
 $config = (new ConfigLoader(__DIR__ . '/../config/devguard.php'))->load(getcwd() ?: __DIR__);
 
 // Fallback used only when running from a source checkout where the package
 // is the root composer project. Installed users get the real version dynamically.
-$version = '0.1.2';
+$version = '0.2.0';
 try {
     $installed = \Composer\InstalledVersions::getPrettyVersion('ahmedanbar/devguard');
     if (is_string($installed) && $installed !== '') {
@@ -47,5 +49,7 @@ $app = new Application('DevGuard', $version);
 $app->addTool(new PingTool());
 $app->addTool(new DeployReadinessTool($config));
 $app->addTool(new ArchitectureTool($config));
+$app->addTool(new EnvAuditTool());
+$app->addTool(new DependencyAuditTool());
 
 exit($app->run());

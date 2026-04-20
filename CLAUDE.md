@@ -6,10 +6,13 @@ Context for Claude Code when working in this repo. Keep this file in sync with r
 
 ## What this is
 
-**DevGuard** is a modular PHP CLI toolkit for Laravel projects. Two tools ship today:
+**DevGuard** is a modular PHP CLI toolkit for Laravel projects. Four tools + a hook installer ship today:
 
-1. **Deploy Readiness Score** — 7 production-readiness checks, weighted 0–100 score
-2. **Laravel Architecture Enforcer** — 6 clean-architecture rules with AST-based detection
+1. **Deploy Readiness Score** (`deploy`) — 7 production-readiness checks, weighted 0–100 score
+2. **Laravel Architecture Enforcer** (`architecture`) — 6 clean-architecture rules with AST-based detection
+3. **Env Audit** (`env`) — `.env` vs `.env.example` consistency: missing keys, drift, weak APP_KEY
+4. **Dependency Audit** (`deps`) — wraps `composer audit` for CVE + abandoned-package detection
+5. **`devguard install-hook`** — installs a git pre-commit/pre-push hook that runs the tools as a gate
 
 Designed for adding more tools without touching the framework code.
 
@@ -72,7 +75,9 @@ src/
 └── Tools/
     ├── Ping/                      # Smoke-test placeholder, keep it
     ├── DeployReadiness/           # Tool + Scorer + 7 checks
-    └── ArchitectureEnforcer/      # Tool + FileScanner + 6 rules
+    ├── ArchitectureEnforcer/      # Tool + FileScanner + 6 rules
+    ├── EnvAudit/                  # Tool + EnvFileLoader + 4 rules (.env vs .env.example)
+    └── DependencyAudit/           # Tool + 1 rule wrapping `composer audit`
 
 tests/
 ├── Unit/             # Pure unit tests
@@ -169,19 +174,22 @@ Author / maintainer: **Ahmed Anbar** (begnulinux@gmail.com), GitHub `AhmedAnbar`
 
 ## Current state
 
-- CLI shipped: **v0.1.1** on Packagist
+- CLI shipped: **v0.2.0** on Packagist (added EnvAudit, DependencyAudit, install-hook)
 - Action shipped: **v1.0.2** on Marketplace (rolling tag: `v1`)
 - CI: 4 jobs, all green (`PHP 8.2`, `PHP 8.3`, `action-smoke-pass`, `action-smoke-fail`)
-- Real-world tested: yes, surfaced and fixed a real issue on Ahmed's Laravel project
-- Packagist auto-update webhook: **TBD — verify it's configured** at https://packagist.org/packages/ahmedanbar/devguard before promoting v0.2
+- Tests: 38 passed, 91 assertions
+- Real-world tested: yes, surfaced and fixed real issues on Ahmed's Laravel project
+- Packagist auto-update webhook: **TBD — verify it's configured** at https://packagist.org/packages/ahmedanbar/devguard
 
 ## Open / next moves
 
 * Verify Packagist auto-update webhook is on (so future tags publish themselves)
-* Create GitHub Releases for `v0.1.0` and `v0.1.1` (currently they're tags only, no Release pages)
+* Create GitHub Releases for `v0.1.x` and `v0.2.0` (currently they're tags only, no Release pages)
 * Add badges to README (CI status, Packagist version, downloads, license)
 * Phase 5 candidates (pick when there's appetite):
   - **Baseline file** — let teams adopt on legacy projects without fixing 200 issues on day one
-  - **Auto-fix mode** — `devguard fix deploy` writes safe `.env` corrections
-  - **3rd tool** — security audit (composer audit + CVE), or N+1 query detector
+  - **Auto-fix mode** — `devguard fix env` writes safe `.env` corrections from `.env.example`
+  - **Docker / CI-CD audit tools** — Dockerfile checks (root user, :latest), CI workflow presence
+  - **SARIF output** — render failures as inline GitHub PR comments
   - **Plugin discovery** — composer-plugin-style tool registration, no `bin/devguard` edit needed
+  - **Severity sorting within rule groups** — worst-offender controllers first (requires extending RuleResult with `meta` array)

@@ -26,6 +26,9 @@ Failed. Address the errors above before deploying.
 
 - **Deploy Readiness Score** — 7 production-readiness checks (env, debug, cache, queue, rate limit, https, logging) with a 0–100 score.
 - **Architecture Enforcer** — 6 clean-architecture rules (folder structure, fat controllers, complexity, direct DB calls, service/repository layers).
+- **Env Audit** — `.env` vs `.env.example` consistency: missing keys, drift, weak APP_KEY.
+- **Dependency Audit** — wraps `composer audit` to surface CVEs and abandoned packages from your `composer.lock`.
+- **Git hook installer** — `devguard install-hook` adds a pre-push (or pre-commit) gate so checks block bad commits before they ship.
 - **Interactive menu** when run with no arguments.
 - **JSON output** for CI/CD pipelines.
 - **Exit codes** that fail builds when problems are found.
@@ -58,11 +61,17 @@ Make sure `~/.composer/vendor/bin` is on your `PATH`.
 ```bash
 devguard                              # Interactive menu
 devguard tools                        # List registered tools
-devguard run deploy                   # Run a specific tool
-devguard run architecture             # Run another
+devguard run deploy                   # Production-readiness scan
+devguard run architecture             # Architecture rules
+devguard run env                      # .env vs .env.example audit
+devguard run deps                     # composer audit wrapper
 devguard run all                      # Run every tool sequentially
 devguard run deploy --json            # JSON output (CI-friendly)
 devguard run deploy --path=/some/dir  # Operate on a different project
+
+devguard install-hook                 # Install pre-push gate
+devguard install-hook --type=pre-commit --tools=deploy --force
+
 devguard --help
 devguard --version
 ```
