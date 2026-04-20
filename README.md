@@ -26,7 +26,7 @@ Failed. Address the errors above before deploying.
 
 - **Deploy Readiness Score** — 7 production-readiness checks (env, debug, cache, queue, rate limit, https, logging) with a 0–100 score.
 - **Architecture Enforcer** — 6 clean-architecture rules (folder structure, fat controllers, complexity, direct DB calls, service/repository layers).
-- **Env Audit** — `.env` vs `.env.example` consistency: missing keys, drift, weak APP_KEY.
+- **Env Audit** — `.env` vs `.env.example` consistency, drift across `.env.testing`/`.env.staging`/etc., undeclared `env()` calls in code, weak APP_KEY.
 - **Dependency Audit** — wraps `composer audit` to surface CVEs and abandoned packages from your `composer.lock`.
 - **Git hook installer** — `devguard install-hook` adds a pre-push (or pre-commit) gate so checks block bad commits before they ship.
 - **Auto-fix** — `devguard fix deps` runs `composer update <pkg>` for each advisory; `devguard fix env` writes missing keys from `.env.example` (with backup).

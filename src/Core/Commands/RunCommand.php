@@ -132,7 +132,7 @@ final class RunCommand extends Command
      */
     private function writeHtmlReport(array $reports, string $projectPath, string $path, OutputInterface $output, bool $autoOpen): int
     {
-        $version = '0.4.1';
+        $version = '0.5.0';
         try {
             $installed = InstalledVersions::getPrettyVersion('ahmedanbar/devguard');
             if (is_string($installed) && $installed !== '') {

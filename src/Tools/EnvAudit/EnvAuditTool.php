@@ -14,6 +14,8 @@ use DevGuard\Results\ToolReport;
 use DevGuard\Tools\EnvAudit\Rules\DriftedEnvKeysRule;
 use DevGuard\Tools\EnvAudit\Rules\EnvExampleExistsRule;
 use DevGuard\Tools\EnvAudit\Rules\MissingEnvKeysRule;
+use DevGuard\Tools\EnvAudit\Rules\OtherEnvFilesDriftRule;
+use DevGuard\Tools\EnvAudit\Rules\UndeclaredEnvCallsRule;
 use DevGuard\Tools\EnvAudit\Rules\WeakAppKeyRule;
 
 final class EnvAuditTool implements ToolInterface, FixableToolInterface
@@ -27,6 +29,8 @@ final class EnvAuditTool implements ToolInterface, FixableToolInterface
             new EnvExampleExistsRule(),
             new MissingEnvKeysRule(),
             new DriftedEnvKeysRule(),
+            new OtherEnvFilesDriftRule(),
+            new UndeclaredEnvCallsRule(),
             new WeakAppKeyRule(),
         ];
     }

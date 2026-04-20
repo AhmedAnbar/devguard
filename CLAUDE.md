@@ -10,7 +10,7 @@ Context for Claude Code when working in this repo. Keep this file in sync with r
 
 1. **Deploy Readiness Score** (`deploy`) — 7 production-readiness checks, weighted 0–100 score
 2. **Laravel Architecture Enforcer** (`architecture`) — 6 clean-architecture rules with AST-based detection
-3. **Env Audit** (`env`) — `.env` vs `.env.example` consistency: missing keys, drift, weak APP_KEY
+3. **Env Audit** (`env`) — six rules: `.env` vs `.env.example` (missing/drift), `.env.testing`/`.env.staging`/etc. drift against template, **AST-based undeclared `env()` / `Env::get()` call detection** in `app/config/bootstrap/database/routes`, weak APP_KEY
 4. **Dependency Audit** (`deps`) — wraps `composer audit` for CVE + abandoned-package detection
 5. **`devguard install-hook`** — installs a git pre-commit/pre-push hook that runs the tools as a gate
 6. **`devguard fix <tool>`** — auto-fixes supported issues: `fix deps` runs `composer update` per CVE, `fix env` appends missing keys from `.env.example` with a `.env.devguard.bak` backup. Architecture is intentionally non-fixable.
@@ -173,6 +173,8 @@ The `v1` rolling tag is the **only** place a force-push is normal — users pin 
 12. **For 0.x packages, the caret operator pins to the *minor*, not the major.** `^0.2` resolves to `>=0.2.0 <0.3.0`, so a user pinned at `^0.2` will *never* get v0.3.0 from `composer global update`. Mirror image of lesson #2 (publishing) — same fix recipe (`^0.1 || ^0.2 || ^0.3`), but on the consumer side. When telling users to upgrade across a 0.x minor boundary, give them the explicit `composer global require ahmedanbar/devguard:"^0.1 || ^0.2 || ^0.3"` line, not just "run composer update".
 13. **HTML/JSON renderers don't share an interface.** `RendererInterface` is single-report streaming-to-OutputInterface (suits Console + JSON). `HtmlRenderer` is collect-then-emit, takes an array of reports, returns a string — fundamentally different shape because of multi-tool pages. Don't try to force it under the same interface; the cost is extra ceremony for zero benefit. Both `JsonRenderer` and `HtmlRenderer` happen to be invoked by RunCommand directly because they're exit-format-specific, not stream-the-result-as-it-runs renderers like the console one.
 14. **For fire-and-forget subprocesses, use synchronous `Process->run()` — not `start()` — when the child exits quickly.** v0.4.0 tried `Process->start()` for the browser-open step (`open file.html`), figuring async was "safer." In practice PHP exited before Symfony could spawn the child, so nothing happened. The OS open commands (`open`/`xdg-open`/`cmd /c start`) all hand the file to the OS and return in ~50ms — so a synchronous `run()` with a short timeout is the correct model. Fixed in v0.4.1. Rule: `start()` is only appropriate for genuinely long-running children that must outlive the parent, and even then you need explicit detachment (which Symfony Process doesn't do by default).
+15. **`vlucas/phpdotenv` strips `#`-comments at parse time** — already noted as #10 for tests, but it bites again when defining the "declared keys" set for `UndeclaredEnvCallsRule`. The rule needs to know all keys in every env file; if a fixture (or real file) writes `KEY=value#with-hash`, the loader will return `value` and the key name is fine, so this is OK in practice — but be aware that *value*-side `#` content disappears. Names of keys never contain `#` so the rule is unaffected.
+16. **Union semantics for "declared keys" across env files.** `UndeclaredEnvCallsRule` treats a key as declared if it appears in *any* `.env` family file (the union, not intersection). Reason: at runtime Laravel only loads one env file at a time per environment, so a key in `.env.testing` is reachable when `APP_ENV=testing`. Reporting it as "undeclared" because it's missing from `.env` would be a false positive — that's what `OtherEnvFilesDriftRule` is for.
 
 ---
 
@@ -192,11 +194,11 @@ Author / maintainer: **Ahmed Anbar** (begnulinux@gmail.com), GitHub `AhmedAnbar`
 
 ## Current state
 
-- CLI last tagged: **v0.3.0** on Packagist (devguard fix command)
-- **v0.4.0 in progress on main** — `--html` flag for self-contained HTML reports
+- CLI last tagged: **v0.4.1** on Packagist (--html flag + browser auto-open fix)
+- **v0.5.0 in progress on main** — multi-env-file drift + undeclared `env()` call detection
 - Action shipped: **v1.0.2** on Marketplace (rolling tag: `v1`)
 - CI: 4 jobs, all green (`PHP 8.2`, `PHP 8.3`, `action-smoke-pass`, `action-smoke-fail`)
-- Tests: 57 passed, 166 assertions
+- Tests: 73 passed, 207 assertions
 - Real-world tested: yes, surfaced and fixed real issues on Ahmed's Laravel project (joodv2)
 - **Major event 2026-04-20**: full git-history rewrite — every `Co-Authored-By: Claude` trailer stripped from all 12 commits, all 8 tags force-pushed. Existing `composer.lock` references to old SHAs need `composer update ahmedanbar/devguard` to recover.
 - Packagist auto-update webhook: **STILL TBD** — verify at https://packagist.org/packages/ahmedanbar/devguard
