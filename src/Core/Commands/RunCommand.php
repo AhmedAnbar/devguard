@@ -9,6 +9,7 @@ use DevGuard\Core\Baseline\IgnoreAnnotationParser;
 use DevGuard\Core\Baseline\ResultFilter;
 use DevGuard\Core\Output\ConsoleRenderer;
 use DevGuard\Core\Output\HtmlRenderer;
+use DevGuard\Core\Output\SarifBuilder;
 use DevGuard\Core\ProjectContext;
 use DevGuard\Core\ToolManager;
 use Composer\InstalledVersions;
@@ -37,6 +38,7 @@ final class RunCommand extends Command
             ->addArgument('tool', InputArgument::OPTIONAL, 'Tool name (e.g. deploy, architecture, all)')
             ->addOption('json', null, InputOption::VALUE_NONE, 'Output as JSON (CI-friendly)')
             ->addOption('html', null, InputOption::VALUE_OPTIONAL, 'Write a self-contained HTML report. Optional path; defaults to ./devguard-report.html', false)
+            ->addOption('sarif', null, InputOption::VALUE_OPTIONAL, 'Write a SARIF 2.1.0 file for GitHub Code Scanning. Optional path; defaults to ./devguard.sarif', false)
             ->addOption('no-open', null, InputOption::VALUE_NONE, 'With --html: do not auto-open the report in your browser')
             ->addOption('no-baseline', null, InputOption::VALUE_NONE, 'Skip the baseline filter (show every issue, including baselined ones)')
             ->addOption('baseline', null, InputOption::VALUE_REQUIRED, 'Path to baseline file (default: devguard-baseline.json in project root)')
@@ -55,6 +57,15 @@ final class RunCommand extends Command
         $htmlMode = $htmlOpt !== false;
         $htmlPath = $htmlMode
             ? (is_string($htmlOpt) && $htmlOpt !== '' ? $htmlOpt : 'devguard-report.html')
+            : null;
+
+        // --sarif uses the same VALUE_OPTIONAL trick. Additive (not
+        // replacing console) so a developer can `devguard run all --sarif`
+        // and still see the colored output while a sarif file is written.
+        $sarifOpt = $input->getOption('sarif');
+        $sarifMode = $sarifOpt !== false;
+        $sarifPath = $sarifMode
+            ? (is_string($sarifOpt) && $sarifOpt !== '' ? $sarifOpt : 'devguard.sarif')
             : null;
 
         if ($jsonMode && $htmlMode) {
@@ -115,6 +126,12 @@ final class RunCommand extends Command
                 $renderer->render($report, $output);
             }
 
+            // SARIF buffers reports regardless of other output modes —
+            // it's additive, not replacing.
+            if ($sarifMode) {
+                $reportObjects[$report->tool] = $report;
+            }
+
             if ($report->hasFailures()) {
                 $exitCode = Command::FAILURE;
             }
@@ -127,11 +144,22 @@ final class RunCommand extends Command
 
         if ($htmlMode && $htmlPath !== null) {
             $writeResult = $this->writeHtmlReport(
-                $reportObjects,
+                array_values($reportObjects),
                 $context->rootPath,
                 $htmlPath,
                 $output,
                 ! (bool) $input->getOption('no-open'),
+            );
+            if ($writeResult !== Command::SUCCESS) {
+                return $writeResult;
+            }
+        }
+
+        if ($sarifMode && $sarifPath !== null) {
+            $writeResult = $this->writeSarifReport(
+                array_values($reportObjects),
+                $sarifPath,
+                $output,
             );
             if ($writeResult !== Command::SUCCESS) {
                 return $writeResult;
@@ -189,7 +217,7 @@ final class RunCommand extends Command
      */
     private function writeHtmlReport(array $reports, string $projectPath, string $path, OutputInterface $output, bool $autoOpen): int
     {
-        $version = '0.6.0';
+        $version = '0.7.0';
         try {
             $installed = InstalledVersions::getPrettyVersion('ahmedanbar/devguard');
             if (is_string($installed) && $installed !== '') {
@@ -230,6 +258,59 @@ final class RunCommand extends Command
         }
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * @param array<int, \DevGuard\Results\ToolReport> $reports
+     */
+    private function writeSarifReport(array $reports, string $path, OutputInterface $output): int
+    {
+        $version = $this->resolveVersion();
+        $absolute = $this->resolveOutputPath($path);
+
+        $dir = dirname($absolute);
+        if (! is_dir($dir)) {
+            $output->writeln(sprintf('<fg=red>Error:</> directory does not exist: %s', $dir));
+            return 2;
+        }
+
+        try {
+            $sarif = (new SarifBuilder())->build($reports, $version);
+        } catch (\Throwable $e) {
+            $output->writeln('<fg=red>Error building SARIF:</> ' . $e->getMessage());
+            return 2;
+        }
+
+        if (file_put_contents($absolute, $sarif . "\n") === false) {
+            $output->writeln(sprintf('<fg=red>Error:</> could not write SARIF file to %s', $absolute));
+            return 2;
+        }
+
+        $output->writeln(sprintf('<fg=green>✓</> SARIF written to <fg=cyan>%s</>', $absolute));
+        return Command::SUCCESS;
+    }
+
+    private function resolveVersion(): string
+    {
+        $version = '0.7.0'; // synced manually with bin/devguard fallback
+        try {
+            $installed = InstalledVersions::getPrettyVersion('ahmedanbar/devguard');
+            if (is_string($installed) && $installed !== '') {
+                $version = ltrim($installed, 'v');
+            }
+        } catch (\Throwable) {
+            // Stay on the fallback.
+        }
+        return $version;
+    }
+
+    private function resolveOutputPath(string $path): string
+    {
+        if (str_starts_with($path, '/')) {
+            return $path;
+        }
+        $cwd = getcwd();
+        return $cwd === false ? $path : rtrim($cwd, '/') . '/' . $path;
     }
 
     /**

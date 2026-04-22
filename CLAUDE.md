@@ -16,6 +16,7 @@ Context for Claude Code when working in this repo. Keep this file in sync with r
 6. **`devguard fix <tool>`** — auto-fixes supported issues: `fix deps` runs `composer update` per CVE, `fix env` appends missing keys from `.env.example` with a `.env.devguard.bak` backup. Architecture is intentionally non-fixable.
 7. **HTML report** — `devguard run <tool> --html[=path]` writes a self-contained styled HTML page (inline CSS, no JS, no CDN) and auto-opens it in the default browser (`open` / `xdg-open` / `start`). Skips auto-open when `CI` env var is set, on unsupported OSes, or when `--no-open` is passed. Renderer lives at `src/Core/Output/HtmlRenderer.php`. Doesn't implement `RendererInterface` because that's single-report streaming; HTML needs collect-then-emit (multi-tool pages, score rings, grouped results).
 8. **Baseline file + `@devguard-ignore` annotations** (`src/Core/Baseline/`) — `devguard baseline` records every existing issue's signature in `devguard-baseline.json` (committed). `RunCommand` auto-loads it and filters every `ToolReport` through `ResultFilter` before rendering. Inline `// @devguard-ignore[: rule_a, rule_b]` annotations also suppress per-issue (same-line or line-above lookup). Issue signature = SHA-1 of (rule_name + file + message), deliberately *no line numbers* — line shifts on edits would otherwise cause endless baseline churn. Trade-off documented: same exact issue twice in a file collapses to one slot.
+9. **SARIF output** (`src/Core/Output/SarifBuilder.php`) — `devguard run <tool> --sarif[=path]` emits SARIF 2.1.0 for upload to GitHub Code Scanning via `github/codeql-action/upload-sarif`. **Additive** (not replacing console output) so developers can use it locally too. One combined run with prefixed rule IDs (`deploy/debug_mode`, `architecture/fat_controller`). `partialFingerprints.devguardSignature/v1` reuses the *exact same baseline signature* — same SHA-1 means GitHub correctly tracks "same issue across runs" with no extra bookkeeping. Baseline-suppressed issues are NOT emitted (filter applies before SARIF generation, like every other renderer).
 
 Designed for adding more tools without touching the framework code.
 
@@ -178,6 +179,8 @@ The `v1` rolling tag is the **only** place a force-push is normal — users pin 
 16. **Union semantics for "declared keys" across env files.** `UndeclaredEnvCallsRule` treats a key as declared if it appears in *any* `.env` family file (the union, not intersection). Reason: at runtime Laravel only loads one env file at a time per environment, so a key in `.env.testing` is reachable when `APP_ENV=testing`. Reporting it as "undeclared" because it's missing from `.env` would be a false positive — that's what `OtherEnvFilesDriftRule` is for.
 17. **Baseline file paths follow `--path`, not `getcwd()`.** First version of `BaselineCommand` defaulted to writing `devguard-baseline.json` in the user's cwd. Caught by tests: `devguard baseline --path=/some/other/project` would put the baseline file in *whatever dir you invoked from*, not in the project being audited. The baseline belongs *with* the project (it gets committed), so the default output path is now `<project_root>/devguard-baseline.json`. Custom locations (`--output=/abs/path.json`) still work. Same logic applies to the loader: `RunCommand` looks for the file in `$context->path()`, not cwd.
 18. **Signatures hash by (rule + file + message), NOT (rule + file + line).** Lines shift on every edit; including them would cause baseline churn on every cosmetic refactor. Including the message means certain refactors *do* invalidate signatures (e.g. fat_controller growing from 401 → 402 lines changes the message text and thus the hash). Acceptable for v1; can be refined per-rule later by introducing canonicalised messages if users complain about churn.
+19. **Output formats split into "replacing" vs "additive" patterns.** `--json` and `--html` REPLACE the console renderer (one stdout/file destination per run, mutual exclusion). `--sarif` is ADDITIVE — runs alongside whatever else is enabled. Reasoning: SARIF is a CI-consumption artifact (GitHub Code Scanning), not a human-readable replacement; developers want to see the colored console AND have the file written. The mental model: replacing formats own a destination (stdout/browser); additive formats own only a file. Future formats (e.g. `--md`, `--junit`) should follow the additive pattern unless they actually replace stdout.
+20. **Pest captures even `@`-suppressed PHP warnings.** Tests using `@unlink($file)` for "cleanup if exists" still trip Pest's warning detector — the `@` operator suppresses the user-facing message but doesn't prevent the warning from being raised internally. Replace with explicit `if (is_file($p)) { unlink($p); }`. Caught when adding SARIF feature tests, fixed retroactively in BaselineFlowTest too.
 
 ---
 
@@ -197,11 +200,11 @@ Author / maintainer: **Ahmed Anbar** (begnulinux@gmail.com), GitHub `AhmedAnbar`
 
 ## Current state
 
-- CLI last tagged: **v0.5.0** on Packagist (multi-env-file drift + undeclared `env()` calls)
-- **v0.6.0 in progress on main** — baseline file + `@devguard-ignore` annotations
+- CLI last tagged: **v0.6.0** on Packagist (baseline file + `@devguard-ignore` annotations)
+- **v0.7.0 in progress on main** — SARIF 2.1.0 output for GitHub Code Scanning
 - Action shipped: **v1.0.2** on Marketplace (rolling tag: `v1`)
 - CI: 4 jobs, all green (`PHP 8.2`, `PHP 8.3`, `action-smoke-pass`, `action-smoke-fail`)
-- Tests: 97 passed, 257 assertions
+- Tests: 110 passed, 298 assertions
 - Real-world tested: yes, surfaced and fixed real issues on Ahmed's Laravel project (joodv2)
 - **Major event 2026-04-20**: full git-history rewrite — every `Co-Authored-By: Claude` trailer stripped from all 12 commits, all 8 tags force-pushed. Existing `composer.lock` references to old SHAs need `composer update ahmedanbar/devguard` to recover.
 - Packagist auto-update webhook: **STILL TBD** — verify at https://packagist.org/packages/ahmedanbar/devguard

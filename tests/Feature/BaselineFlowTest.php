@@ -20,7 +20,9 @@ it('end-to-end: generate baseline, re-run, all issues suppressed', function () {
     $baseline = $fixture . '/devguard-baseline.json';
 
     // Sanity: no leftover baseline from a prior test
-    @unlink($baseline);
+    if (is_file($baseline)) {
+        unlink($baseline);
+    }
 
     // Step 1: generate the baseline
     $gen = runDevguardForBaseline(['baseline', '--path=' . $fixture]);

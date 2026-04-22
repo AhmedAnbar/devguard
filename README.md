@@ -34,6 +34,7 @@ Failed. Address the errors above before deploying.
 - **Interactive menu** when run with no arguments.
 - **JSON output** for CI/CD pipelines.
 - **HTML report** — `--html` writes a self-contained, styled page (no CDN, no JS) you can email, archive as a CI artifact, or open locally.
+- **SARIF output** — `--sarif` emits a SARIF 2.1.0 file. Upload via `github/codeql-action/upload-sarif` and DevGuard findings appear as inline annotations on PR diffs in GitHub Code Scanning.
 - **Exit codes** that fail builds when problems are found.
 - **Zero config** — works out of the box; override per-project via `devguard.php`.
 
@@ -73,6 +74,8 @@ devguard run deploy --json            # JSON output (CI-friendly)
 devguard run deploy --html            # Write devguard-report.html, auto-open in browser
 devguard run all --html=report.html   # Combined HTML page (all tools, one file)
 devguard run deploy --html --no-open  # Skip the browser auto-open (CI / scripts)
+devguard run all --sarif              # Write devguard.sarif (additive — console still shows)
+devguard run all --sarif=findings.sarif # Custom SARIF path
 devguard run deploy --path=/some/dir  # Operate on a different project
 
 devguard install-hook                 # Install pre-push gate
@@ -90,6 +93,22 @@ devguard fix all --yes                # Run every fixable tool
 devguard --help
 devguard --version
 ```
+
+### GitHub Code Scanning (SARIF)
+
+```yaml
+- name: Run DevGuard
+  run: devguard run all --sarif=devguard.sarif
+
+- name: Upload SARIF to GitHub Code Scanning
+  if: always()
+  uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: devguard.sarif
+    category: devguard
+```
+
+DevGuard findings then appear as inline annotations on PR diffs and in the repository's **Security → Code scanning** tab. Severities map: `Status::Fail` → `error`, `Status::Warning` → `warning`. Pass results aren't emitted. The `partialFingerprints` reuse the same signature scheme as the baseline file, so GitHub correctly tracks "same issue across runs" without re-flagging fixed items.
 
 ### Adopting on a legacy codebase: baseline + ignores
 
