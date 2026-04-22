@@ -34,7 +34,7 @@ $config = (new ConfigLoader(__DIR__ . '/../config/devguard.php'))->load(getcwd()
 
 // Fallback used only when running from a source checkout where the package
 // is the root composer project. Installed users get the real version dynamically.
-$version = '0.5.0';
+$version = '0.6.0';
 try {
     $installed = \Composer\InstalledVersions::getPrettyVersion('ahmedanbar/devguard');
     if (is_string($installed) && $installed !== '') {

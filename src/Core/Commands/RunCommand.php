@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace DevGuard\Core\Commands;
 
+use DevGuard\Core\Baseline\BaselineLoader;
+use DevGuard\Core\Baseline\IgnoreAnnotationParser;
+use DevGuard\Core\Baseline\ResultFilter;
 use DevGuard\Core\Output\ConsoleRenderer;
 use DevGuard\Core\Output\HtmlRenderer;
 use DevGuard\Core\ProjectContext;
@@ -35,6 +38,8 @@ final class RunCommand extends Command
             ->addOption('json', null, InputOption::VALUE_NONE, 'Output as JSON (CI-friendly)')
             ->addOption('html', null, InputOption::VALUE_OPTIONAL, 'Write a self-contained HTML report. Optional path; defaults to ./devguard-report.html', false)
             ->addOption('no-open', null, InputOption::VALUE_NONE, 'With --html: do not auto-open the report in your browser')
+            ->addOption('no-baseline', null, InputOption::VALUE_NONE, 'Skip the baseline filter (show every issue, including baselined ones)')
+            ->addOption('baseline', null, InputOption::VALUE_REQUIRED, 'Path to baseline file (default: devguard-baseline.json in project root)')
             ->addOption('path', 'p', InputOption::VALUE_REQUIRED, 'Project path (default: current directory)', getcwd());
     }
 
@@ -75,6 +80,8 @@ final class RunCommand extends Command
             ? array_values($this->manager->all())
             : [$this->manager->get($toolName)];
 
+        $filter = $this->buildResultFilter($input, $context, $output);
+
         $renderer = new ConsoleRenderer();
         $exitCode = Command::SUCCESS;
         $jsonReports = [];
@@ -89,6 +96,13 @@ final class RunCommand extends Command
                     $output->writeln($e->getTraceAsString());
                 }
                 return 2;
+            }
+
+            // Apply baseline + @devguard-ignore filtering before rendering.
+            // Filter mutates the report's results list and stamps a
+            // suppressedCount that renderers display as "(N suppressed)".
+            if ($filter !== null) {
+                $filter->apply($report);
             }
 
             if ($htmlMode) {
@@ -128,11 +142,54 @@ final class RunCommand extends Command
     }
 
     /**
+     * Build the baseline + annotation filter. Returns null when --no-baseline
+     * is set OR no baseline file exists (so we don't pay the cost when the
+     * feature isn't being used).
+     */
+    private function buildResultFilter(InputInterface $input, ProjectContext $context, OutputInterface $output): ?ResultFilter
+    {
+        if ((bool) $input->getOption('no-baseline')) {
+            return null;
+        }
+
+        $explicit = $input->getOption('baseline');
+        $baselinePath = is_string($explicit) && $explicit !== ''
+            ? $this->absolutize($explicit, $context->rootPath)
+            : $context->path(BaselineLoader::DEFAULT_FILENAME);
+
+        if (! is_file($baselinePath)) {
+            // Annotations alone are still useful — but without a baseline
+            // file there's nothing to filter at the project level. Still
+            // build a filter so @devguard-ignore comments take effect.
+            $baseline = (new BaselineLoader())->load($baselinePath);
+            return new ResultFilter($baseline, new IgnoreAnnotationParser(), $context->rootPath);
+        }
+
+        try {
+            $baseline = (new BaselineLoader())->load($baselinePath);
+        } catch (\Throwable $e) {
+            $output->writeln('<fg=red>Baseline file is invalid:</> ' . $e->getMessage());
+            $output->writeln('<fg=gray>Re-run `devguard baseline` to regenerate, or pass --no-baseline to skip filtering.</>');
+            return null;
+        }
+
+        return new ResultFilter($baseline, new IgnoreAnnotationParser(), $context->rootPath);
+    }
+
+    private function absolutize(string $path, string $root): string
+    {
+        if (str_starts_with($path, '/')) {
+            return $path;
+        }
+        return rtrim($root, '/') . '/' . ltrim($path, '/');
+    }
+
+    /**
      * @param array<int, \DevGuard\Results\ToolReport> $reports
      */
     private function writeHtmlReport(array $reports, string $projectPath, string $path, OutputInterface $output, bool $autoOpen): int
     {
-        $version = '0.5.0';
+        $version = '0.6.0';
         try {
             $installed = InstalledVersions::getPrettyVersion('ahmedanbar/devguard');
             if (is_string($installed) && $installed !== '') {

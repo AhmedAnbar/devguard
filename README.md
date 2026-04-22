@@ -30,6 +30,7 @@ Failed. Address the errors above before deploying.
 - **Dependency Audit** — wraps `composer audit` to surface CVEs and abandoned packages from your `composer.lock`.
 - **Git hook installer** — `devguard install-hook` adds a pre-push (or pre-commit) gate so checks block bad commits before they ship.
 - **Auto-fix** — `devguard fix deps` runs `composer update <pkg>` for each advisory; `devguard fix env` writes missing keys from `.env.example` (with backup).
+- **Baseline file + `@devguard-ignore` annotations** — `devguard baseline` records existing issues so future runs only surface NEW ones. Adopt on legacy projects without fixing 200 things on day one.
 - **Interactive menu** when run with no arguments.
 - **JSON output** for CI/CD pipelines.
 - **HTML report** — `--html` writes a self-contained, styled page (no CDN, no JS) you can email, archive as a CI artifact, or open locally.
@@ -77,6 +78,10 @@ devguard run deploy --path=/some/dir  # Operate on a different project
 devguard install-hook                 # Install pre-push gate
 devguard install-hook --type=pre-commit --tools=deploy --force
 
+devguard baseline                     # Record current issues as the accepted baseline
+devguard baseline --output=audit.json # Custom baseline path
+devguard run all --no-baseline        # Bypass baseline filtering, see everything
+
 devguard fix deps                     # Interactive: prompts per CVE
 devguard fix env --dry-run            # Preview the plan, change nothing
 devguard fix env --yes                # Apply every fix without prompting
@@ -85,6 +90,28 @@ devguard fix all --yes                # Run every fixable tool
 devguard --help
 devguard --version
 ```
+
+### Adopting on a legacy codebase: baseline + ignores
+
+Run once on a project that has 50 issues:
+
+```bash
+devguard baseline                # writes devguard-baseline.json
+git add devguard-baseline.json && git commit -m "chore: devguard baseline"
+```
+
+Now future `devguard run` invocations skip the baselined 50 and only surface what's *new*. To see everything anyway, pass `--no-baseline`. To regenerate after fixing a chunk, run `devguard baseline` again.
+
+For one-off exceptions in code (no need to bake them into the baseline):
+
+```php
+// @devguard-ignore: direct_db_in_controller
+$rows = DB::table('users')->whereRaw($trustedExpr)->get();
+
+$x = $request->raw(); // @devguard-ignore   (suppresses every rule at this line)
+```
+
+The annotation can sit on the same line or directly above the issue.
 
 ### Auto-fix
 

@@ -33,6 +33,7 @@ final class HtmlRenderer
     {
         $generatedAt = date('Y-m-d H:i:s T');
         $totals = $this->aggregateTotals($reports);
+        $totalSuppressed = $this->aggregateSuppressed($reports);
         $overallPassed = $totals['fail'] === 0;
         $overallBadge = $overallPassed
             ? '<span class="overall-badge pass">' . htmlspecialchars($totals['warn'] === 0 ? 'All checks passed' : 'Passed (with warnings)', ENT_QUOTES) . '</span>'
@@ -90,6 +91,7 @@ final class HtmlRenderer
         <div class="summary-num">{$failCount}</div>
         <div class="summary-label">failed</div>
       </div>
+      {$this->renderSuppressedStat($totalSuppressed)}
     </div>
   </section>
 
@@ -278,6 +280,29 @@ HTML;
         };
     }
 
+    private function renderSuppressedStat(int $suppressed): string
+    {
+        if ($suppressed <= 0) {
+            return '';
+        }
+        return <<<HTML
+      <div class="summary-stat suppressed">
+        <div class="summary-num">{$suppressed}</div>
+        <div class="summary-label">suppressed</div>
+      </div>
+HTML;
+    }
+
+    /** @param array<int, ToolReport> $reports */
+    private function aggregateSuppressed(array $reports): int
+    {
+        $total = 0;
+        foreach ($reports as $r) {
+            $total += $r->suppressedCount();
+        }
+        return $total;
+    }
+
     /**
      * @param array<int, ToolReport> $reports
      * @return array{pass:int,warn:int,fail:int}
@@ -378,6 +403,8 @@ html, body {
 .summary-stat.pass .summary-num { color: var(--pass); }
 .summary-stat.warn .summary-num { color: var(--warn); }
 .summary-stat.fail .summary-num { color: var(--fail); }
+.summary-stat.suppressed .summary-num { color: var(--muted); }
+.summary-stat.suppressed .summary-label { color: var(--muted); }
 
 .report {
   background: var(--surface); border: 1px solid var(--border); border-radius: 14px;

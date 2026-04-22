@@ -59,6 +59,19 @@ final class ConsoleRenderer implements RendererInterface
         if ($parts !== []) {
             $output->writeln('  <fg=gray>' . implode(' · ', $parts) . '</>');
         }
+
+        // Surface baseline suppression so users know there's hidden state.
+        // Without this line, "0 issues" would be ambiguous: actually clean,
+        // or just baselined?
+        $suppressed = $report->suppressedCount();
+        if ($suppressed > 0) {
+            $output->writeln(sprintf(
+                '  <fg=gray>(%d issue%s suppressed by baseline / @devguard-ignore)</>',
+                $suppressed,
+                $suppressed === 1 ? '' : 's'
+            ));
+        }
+
         $output->writeln('');
     }
 
