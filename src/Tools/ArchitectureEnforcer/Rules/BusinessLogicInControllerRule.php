@@ -39,12 +39,21 @@ final class BusinessLogicInControllerRule implements RuleInterface
 
         foreach ($this->scanner->controllers($ctx) as $file) {
             $absolute = $file->getRealPath() ?: $file->getPathname();
-            $tree = $this->ast->parseFile($absolute);
+            $relative = $this->scanner->relativePath($ctx, $file);
+            $tree = $this->ast->parseFile($absolute, $parseError);
             if ($tree === null) {
+                // Surface the skip — silent fallbacks hide real bugs (lesson #21).
+                // Without this, a controller with a syntax error is invisibly
+                // unaudited; the team thinks it's clean when it's just unscanned.
+                $results[] = RuleResult::warn(
+                    $this->name(),
+                    sprintf('Could not parse %s — complexity check skipped (%s)', $relative, $parseError ?? 'unknown error'),
+                    $relative,
+                    null,
+                    sprintf('Run `php -l %s` to see the parse error, then re-run DevGuard.', $relative)
+                );
                 continue;
             }
-
-            $relative = $this->scanner->relativePath($ctx, $file);
 
             foreach ($this->ast->classMethods($tree) as $method) {
                 if (! $method->isPublic() || $this->isFrameworkMethod($method->name->toString())) {

@@ -102,7 +102,7 @@ final class BaselineCommand extends Command
     /** @return array<string, string> */
     private function toolVersionMap(): array
     {
-        $version = '0.7.0'; // synced manually with bin/devguard fallback
+        $version = '0.7.1'; // synced manually with bin/devguard fallback
         try {
             $installed = InstalledVersions::getPrettyVersion('ahmedanbar/devguard');
             if (is_string($installed) && $installed !== '') {

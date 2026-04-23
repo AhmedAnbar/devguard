@@ -24,22 +24,40 @@ final class AstHelper
     /**
      * Parse a file into AST nodes. Returns null if parsing fails.
      *
+     * The optional $error parameter captures *why* parsing failed so callers
+     * can surface a warning to the user instead of silently skipping the
+     * file (the silent-swallow anti-pattern bit a real user in v0.7.0 —
+     * see CLAUDE.md lesson #21). Backward compatible: existing callers that
+     * ignore the second argument behave exactly as before.
+     *
+     * @param ?string $error  written-by-reference; null when parsing
+     *                        succeeded, otherwise a short human-readable
+     *                        explanation
      * @return array<int, Node>|null
      */
-    public function parseFile(string $absolutePath): ?array
+    public function parseFile(string $absolutePath, ?string &$error = null): ?array
     {
+        $error = null;
+
         if (! is_file($absolutePath)) {
+            $error = 'file not found';
             return null;
         }
 
-        $source = file_get_contents($absolutePath);
+        $source = @file_get_contents($absolutePath);
         if ($source === false) {
+            $error = 'could not read file';
             return null;
         }
 
         try {
             return $this->parser->parse($source);
-        } catch (PhpParserError) {
+        } catch (PhpParserError $e) {
+            // Strip the leading "Syntax error, " prefix nikic adds — our
+            // wrapping message already establishes the context.
+            $msg = $e->getMessage();
+            $msg = (string) preg_replace('/^Syntax error,\s*/i', '', $msg);
+            $error = "syntax error — {$msg}";
             return null;
         }
     }

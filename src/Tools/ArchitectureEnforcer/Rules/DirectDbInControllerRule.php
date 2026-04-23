@@ -41,12 +41,19 @@ final class DirectDbInControllerRule implements RuleInterface
 
         foreach ($this->scanner->controllers($ctx) as $file) {
             $absolute = $file->getRealPath() ?: $file->getPathname();
-            $tree = $this->ast->parseFile($absolute);
+            $relative = $this->scanner->relativePath($ctx, $file);
+            $tree = $this->ast->parseFile($absolute, $parseError);
             if ($tree === null) {
+                // Surface the skip — see lesson #21 in CLAUDE.md.
+                $results[] = RuleResult::warn(
+                    $this->name(),
+                    sprintf('Could not parse %s — direct-DB check skipped (%s)', $relative, $parseError ?? 'unknown error'),
+                    $relative,
+                    null,
+                    sprintf('Run `php -l %s` to see the parse error, then re-run DevGuard.', $relative)
+                );
                 continue;
             }
-
-            $relative = $this->scanner->relativePath($ctx, $file);
 
             foreach ($this->ast->classMethods($tree) as $method) {
                 $hits = $this->findDbCalls($method);

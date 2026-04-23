@@ -81,12 +81,25 @@ final class UndeclaredEnvCallsRule implements RuleInterface
             foreach ($files as $file) {
                 $scannedAny = true;
                 $abs = $file->getRealPath() ?: $file->getPathname();
-                $ast = $this->ast->parseFile($abs);
+                $relPath = $this->relativePath($ctx, $abs);
+                $ast = $this->ast->parseFile($abs, $parseError);
                 if ($ast === null) {
+                    // Surface the skip rather than silently dropping a file.
+                    // A real user got bitten by this in v0.7.0 — they added
+                    // env('FAKE') outside a method, the file no longer
+                    // parsed, and the rule reported "all clean" instead of
+                    // flagging the new key OR warning about the parse fail.
+                    // Lesson #21 in CLAUDE.md.
+                    $results[] = RuleResult::warn(
+                        $this->name(),
+                        sprintf('Could not parse %s — undeclared env() check skipped (%s)', $relPath, $parseError ?? 'unknown error'),
+                        $relPath,
+                        null,
+                        sprintf('Run `php -l %s` to see the parse error, then re-run DevGuard.', $relPath)
+                    );
                     continue;
                 }
 
-                $relPath = $this->relativePath($ctx, $abs);
                 $this->collectFromAst($ast, $finder, $declared, $relPath, $reported, $results);
             }
         }

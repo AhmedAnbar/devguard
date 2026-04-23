@@ -181,6 +181,7 @@ The `v1` rolling tag is the **only** place a force-push is normal — users pin 
 18. **Signatures hash by (rule + file + message), NOT (rule + file + line).** Lines shift on every edit; including them would cause baseline churn on every cosmetic refactor. Including the message means certain refactors *do* invalidate signatures (e.g. fat_controller growing from 401 → 402 lines changes the message text and thus the hash). Acceptable for v1; can be refined per-rule later by introducing canonicalised messages if users complain about churn.
 19. **Output formats split into "replacing" vs "additive" patterns.** `--json` and `--html` REPLACE the console renderer (one stdout/file destination per run, mutual exclusion). `--sarif` is ADDITIVE — runs alongside whatever else is enabled. Reasoning: SARIF is a CI-consumption artifact (GitHub Code Scanning), not a human-readable replacement; developers want to see the colored console AND have the file written. The mental model: replacing formats own a destination (stdout/browser); additive formats own only a file. Future formats (e.g. `--md`, `--junit`) should follow the additive pattern unless they actually replace stdout.
 20. **Pest captures even `@`-suppressed PHP warnings.** Tests using `@unlink($file)` for "cleanup if exists" still trip Pest's warning detector — the `@` operator suppresses the user-facing message but doesn't prevent the warning from being raised internally. Replace with explicit `if (is_file($p)) { unlink($p); }`. Caught when adding SARIF feature tests, fixed retroactively in BaselineFlowTest too.
+21. **Never silently skip a file the rule was asked to scan.** v0.7.0 had every AST-using rule do `if ($ast === null) { continue; }` — a real user added `env('FAKE')` to `Controller.php`, the file no longer parsed, and `devguard run env` happily reported "all clean" instead of either flagging the new key OR warning that the file couldn't be checked. Classic silent-fallback anti-pattern from the global CLAUDE.md. Fix in v0.7.1: `AstHelper::parseFile()` now sets `&$error` with the reason, and each rule emits a `RuleResult::warn()` naming the file + suggesting `php -l <file>`. Multiple rules will warn about the same broken file (each scopes its own message) — that's noisy on purpose; the user fixes the file once and all warnings go away. Future AST-using rules MUST follow the same pattern; the helper signature makes it the path of least resistance.
 
 ---
 
@@ -200,11 +201,11 @@ Author / maintainer: **Ahmed Anbar** (begnulinux@gmail.com), GitHub `AhmedAnbar`
 
 ## Current state
 
-- CLI last tagged: **v0.6.0** on Packagist (baseline file + `@devguard-ignore` annotations)
-- **v0.7.0 in progress on main** — SARIF 2.1.0 output for GitHub Code Scanning
+- CLI last tagged: **v0.7.0** on Packagist (SARIF 2.1.0 output for GitHub Code Scanning)
+- **v0.7.1 in progress on main** — silent-parse-error fix (rules now warn instead of skipping unparseable files)
 - Action shipped: **v1.0.2** on Marketplace (rolling tag: `v1`)
 - CI: 4 jobs, all green (`PHP 8.2`, `PHP 8.3`, `action-smoke-pass`, `action-smoke-fail`)
-- Tests: 110 passed, 298 assertions
+- Tests: 116 passed, 312 assertions
 - Real-world tested: yes, surfaced and fixed real issues on Ahmed's Laravel project (joodv2)
 - **Major event 2026-04-20**: full git-history rewrite — every `Co-Authored-By: Claude` trailer stripped from all 12 commits, all 8 tags force-pushed. Existing `composer.lock` references to old SHAs need `composer update ahmedanbar/devguard` to recover.
 - Packagist auto-update webhook: **STILL TBD** — verify at https://packagist.org/packages/ahmedanbar/devguard
