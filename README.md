@@ -107,7 +107,7 @@ devguard --version
 
 - name: Upload SARIF to GitHub Code Scanning
   if: always()
-  uses: github/codeql-action/upload-sarif@v3
+  uses: github/codeql-action/upload-sarif@v4
   with:
     sarif_file: devguard.sarif
     category: devguard

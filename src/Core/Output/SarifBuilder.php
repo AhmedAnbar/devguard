@@ -41,6 +41,17 @@ final class SarifBuilder
     private const SARIF_SCHEMA = 'https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0-rtm.6.json';
     private const FINGERPRINT_KEY = 'devguardSignature/v1';
 
+    /**
+     * Fallback file used as the location for results that don't have a
+     * real source file (deploy checks, "composer.lock missing" warnings,
+     * etc.). composer.json is the universal project-root marker — it
+     * MUST exist in every project DevGuard audits because ProjectContext
+     * uses it as the project-detection signal. Anchoring project-wide
+     * findings here gives GitHub Code Scanning a sensible place to
+     * render the alert.
+     */
+    private const FALLBACK_LOCATION_FILE = 'composer.json';
+
     /** @param array<int, ToolReport> $reports */
     public function build(array $reports, string $devguardVersion): string
     {
@@ -95,7 +106,14 @@ final class SarifBuilder
             return null;
         }
 
-        $sarif = [
+        // CRITICAL: GitHub Code Scanning rejects results without locations
+        // even though SARIF 2.1.0 lists locations as optional. v0.8.0 omitted
+        // locations for results without a file (deploy checks, etc.) and
+        // every SARIF upload was rejected with "expected at least one
+        // location." Fixed in v0.8.1 — we always emit locations[], falling
+        // back to composer.json:1 for results without a real file.
+        // See lesson #26 in CLAUDE.md.
+        return [
             'ruleId' => $toolName . '/' . $result->name,
             'level' => $this->mapLevel($result->status),
             'message' => [
@@ -104,14 +122,8 @@ final class SarifBuilder
             'partialFingerprints' => [
                 self::FINGERPRINT_KEY => Baseline::signatureFor($result),
             ],
+            'locations' => [$this->buildLocation($result) ?? $this->fallbackLocation()],
         ];
-
-        $location = $this->buildLocation($result);
-        if ($location !== null) {
-            $sarif['locations'] = [$location];
-        }
-
-        return $sarif;
     }
 
     private function mapLevel(Status $status): string
@@ -141,8 +153,27 @@ final class SarifBuilder
     }
 
     /**
+     * Synthetic location used as the SARIF anchor for project-wide results
+     * that don't map to a single source file (deploy checks, missing
+     * composer.lock warnings). Anchored at composer.json:1 because that
+     * file is guaranteed to exist (ProjectContext requires it).
+     *
+     * @return array<string, mixed>
+     */
+    private function fallbackLocation(): array
+    {
+        return [
+            'physicalLocation' => [
+                'artifactLocation' => ['uri' => self::FALLBACK_LOCATION_FILE],
+                'region' => ['startLine' => 1],
+            ],
+        ];
+    }
+
+    /**
      * Build a SARIF physicalLocation block for results that have a file.
-     * Returns null for results without one (most CheckResult instances).
+     * Returns null for results without one (deploy checks, project-wide
+     * warnings) — caller substitutes fallbackLocation() in that case.
      *
      * @return array<string, mixed>|null
      */

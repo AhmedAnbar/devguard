@@ -186,6 +186,7 @@ The `v1` rolling tag is the **only** place a force-push is normal — users pin 
 23. **Two-step fix flow for cross-file declarations is intentional.** `UndeclaredEnvCallsRule.applyFix` adds the key to `.env.example` only — NOT to `.env`. The user then re-runs `devguard fix env`, which triggers `MissingEnvKeysRule` to copy the new template into `.env`. Auto-doing both steps in one fix would be wrong: `.env.example` keys are templates with placeholder values; `.env` keys are environment-specific (often secrets). Bridging both files in one auto-fix would teach users to commit secrets-shaped junk into their templates. Two steps with explicit user review at each stage is correct.
 24. **Per-file rules opt in to `--changed-only` via `ProjectContext::shouldScan()`.** Plumbing changed-files through every rule's signature would have been invasive (touches `RuleInterface`). Putting the changed set on `ProjectContext` and letting per-file rules call `$ctx->shouldScan($relPath)` keeps the contract narrow: AST/file-scanning rules opt in; project-wide checks (deploy, deps, env_example_exists) ignore the flag entirely — which is correct, those concerns aren't file-scoped. When a rule yields zero results because everything was filtered out, it must emit a friendly "No changed X in scope" pass instead of the usual "all clean" message — otherwise users mistake "filtered to nothing" for "actually clean."
 25. **Different git versions / locales capitalize errors differently.** `ChangedFilesResolver` first tried `str_contains($stderr, 'not a git repository')` to detect the not-a-repo case. Test caught it: a git build produced "Not a git repository" (capital N). Switched to `stripos()` (case-insensitive). Lesson: any string-matching against external tool output should be case-insensitive unless we have a specific reason otherwise — version drift is silent and surprising.
+26. **Spec-valid does NOT mean consumer-accepted.** v0.7.0 emitted SARIF that was *valid SARIF 2.1.0* (locations is listed as optional in the spec) but GitHub Code Scanning rejected every upload with "expected at least one location." We tested against the spec; we did not test against the actual consumer. Fix in v0.8.1: SarifBuilder now ALWAYS emits `locations[]` with at least one entry, falling back to `composer.json:1` for results without a real source file. Rule for any artifact that targets a specific consumer (Code Scanning, Slack webhooks, npm publish, etc.): the test of record is *that consumer accepting the artifact*, not generic spec validation. Spec compliance is necessary but not sufficient.
 
 ---
 
@@ -205,11 +206,11 @@ Author / maintainer: **Ahmed Anbar** (begnulinux@gmail.com), GitHub `AhmedAnbar`
 
 ## Current state
 
-- CLI last tagged: **v0.7.2** on Packagist (UndeclaredEnvCallsRule is now fixable)
-- **v0.8.0 in progress on main** — `--changed-only` mode (scan only files in `git diff`)
+- CLI last tagged: **v0.8.0** on Packagist (`--changed-only` mode)
+- **v0.8.1 in progress on main** — fix SARIF rejection by GitHub Code Scanning (always emit `locations[]`)
 - Action shipped: **v1.0.2** on Marketplace (rolling tag: `v1`)
 - CI: 4 jobs, all green (`PHP 8.2`, `PHP 8.3`, `action-smoke-pass`, `action-smoke-fail`)
-- Tests: 129 passed, 344 assertions
+- Tests: 130 passed, 370 assertions
 - Real-world tested: yes, surfaced and fixed real issues on Ahmed's Laravel project (joodv2)
 - **Major event 2026-04-20**: full git-history rewrite — every `Co-Authored-By: Claude` trailer stripped from all 12 commits, all 8 tags force-pushed. Existing `composer.lock` references to old SHAs need `composer update ahmedanbar/devguard` to recover.
 - Packagist auto-update webhook: **STILL TBD** — verify at https://packagist.org/packages/ahmedanbar/devguard

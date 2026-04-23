@@ -79,14 +79,43 @@ it('includes file location when the result has a file (and line if present)', fu
     expect($result['locations'][0]['physicalLocation']['region']['startLine'])->toBe(42);
 });
 
-it('omits the locations key entirely for results without a file (deploy checks)', function () {
+it('always emits locations[] for results without a file, anchored to composer.json', function () {
+    // CRITICAL behavior — v0.8.0 omitted locations for results without
+    // files (deploy checks etc.) and GitHub Code Scanning rejected every
+    // upload with "expected at least one location." SARIF 2.1.0 lists
+    // locations as optional but Code Scanning requires it. Lesson #26.
     $report = new ToolReport('deploy', 'Deploy');
     $report->add(CheckResult::fail('debug_mode', 'APP_DEBUG enabled'));
 
     $sarif = buildAndDecode([$report]);
 
-    // SARIF allows omitting locations — better than emitting an empty array.
-    expect(isset($sarif['runs'][0]['results'][0]['locations']))->toBeFalse();
+    $location = $sarif['runs'][0]['results'][0]['locations'][0]['physicalLocation'];
+    expect($location['artifactLocation']['uri'])->toBe('composer.json');
+    expect($location['region']['startLine'])->toBe(1);
+});
+
+it('every emitted result has at least one location (regression guard for v0.8.0 SARIF rejection)', function () {
+    // Mix every result shape: with-file, without-file, RuleResult, CheckResult.
+    $report = new ToolReport('mixed', 'Mixed');
+    $report->add(CheckResult::fail('deploy_check', 'no file involved'));
+    $report->add(RuleResult::fail('with_file', 'msg', 'app/X.php'));
+    $report->add(RuleResult::warn('without_file', 'project-wide warning')); // file=null
+    $report->add(RuleResult::fail('with_file_and_line', 'msg', 'app/Y.php', 42));
+
+    $sarif = buildAndDecode([$report]);
+
+    // Spec-valid + Code-Scanning-accepted: every single result MUST have
+    // a non-empty locations array. Without this guard, a future change
+    // could re-introduce the v0.8.0 bug invisibly.
+    foreach ($sarif['runs'][0]['results'] as $r) {
+        expect($r)->toHaveKey('locations');
+        expect($r['locations'])->toBeArray();
+        expect(count($r['locations']))->toBeGreaterThan(0);
+        expect($r['locations'][0])->toHaveKey('physicalLocation');
+        expect($r['locations'][0]['physicalLocation']['artifactLocation']['uri'])
+            ->toBeString()
+            ->not->toBe('');
+    }
 });
 
 it('partialFingerprints reuse the exact baseline signature so GitHub tracks issues across runs', function () {
