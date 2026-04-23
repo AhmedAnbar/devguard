@@ -182,6 +182,8 @@ The `v1` rolling tag is the **only** place a force-push is normal — users pin 
 19. **Output formats split into "replacing" vs "additive" patterns.** `--json` and `--html` REPLACE the console renderer (one stdout/file destination per run, mutual exclusion). `--sarif` is ADDITIVE — runs alongside whatever else is enabled. Reasoning: SARIF is a CI-consumption artifact (GitHub Code Scanning), not a human-readable replacement; developers want to see the colored console AND have the file written. The mental model: replacing formats own a destination (stdout/browser); additive formats own only a file. Future formats (e.g. `--md`, `--junit`) should follow the additive pattern unless they actually replace stdout.
 20. **Pest captures even `@`-suppressed PHP warnings.** Tests using `@unlink($file)` for "cleanup if exists" still trip Pest's warning detector — the `@` operator suppresses the user-facing message but doesn't prevent the warning from being raised internally. Replace with explicit `if (is_file($p)) { unlink($p); }`. Caught when adding SARIF feature tests, fixed retroactively in BaselineFlowTest too.
 21. **Never silently skip a file the rule was asked to scan.** v0.7.0 had every AST-using rule do `if ($ast === null) { continue; }` — a real user added `env('FAKE')` to `Controller.php`, the file no longer parsed, and `devguard run env` happily reported "all clean" instead of either flagging the new key OR warning that the file couldn't be checked. Classic silent-fallback anti-pattern from the global CLAUDE.md. Fix in v0.7.1: `AstHelper::parseFile()` now sets `&$error` with the reason, and each rule emits a `RuleResult::warn()` naming the file + suggesting `php -l <file>`. Multiple rules will warn about the same broken file (each scopes its own message) — that's noisy on purpose; the user fixes the file once and all warnings go away. Future AST-using rules MUST follow the same pattern; the helper signature makes it the path of least resistance.
+22. **Every new fail-severity rule must be evaluated for `FixableInterface` at design time, not as a follow-up.** The `UndeclaredEnvCallsRule` was added in v0.5.0 but didn't get `FixableInterface` until v0.7.2 — meaning for two minor versions, users saw a fail with a clear "Add KEY= to .env.example" suggestion but `devguard fix env` reported "Nothing to fix." The user's expected mental model: if the rule is fail-severity AND has an actionable suggestion, `devguard fix` should usually do it. Acceptable to skip Fixable for rules where the fix needs human judgement (architecture refactors), but it must be a deliberate choice, documented in the rule's docblock. Pattern for v0.7.2 onward: when adding a new rule that emits Status::Fail, write a one-line note in the rule's class docblock saying *why* it does or doesn't implement FixableInterface.
+23. **Two-step fix flow for cross-file declarations is intentional.** `UndeclaredEnvCallsRule.applyFix` adds the key to `.env.example` only — NOT to `.env`. The user then re-runs `devguard fix env`, which triggers `MissingEnvKeysRule` to copy the new template into `.env`. Auto-doing both steps in one fix would be wrong: `.env.example` keys are templates with placeholder values; `.env` keys are environment-specific (often secrets). Bridging both files in one auto-fix would teach users to commit secrets-shaped junk into their templates. Two steps with explicit user review at each stage is correct.
 
 ---
 
@@ -201,11 +203,11 @@ Author / maintainer: **Ahmed Anbar** (begnulinux@gmail.com), GitHub `AhmedAnbar`
 
 ## Current state
 
-- CLI last tagged: **v0.7.0** on Packagist (SARIF 2.1.0 output for GitHub Code Scanning)
-- **v0.7.1 in progress on main** — silent-parse-error fix (rules now warn instead of skipping unparseable files)
+- CLI last tagged: **v0.7.1** on Packagist (silent-parse-error fix)
+- **v0.7.2 in progress on main** — `UndeclaredEnvCallsRule` is now fixable (`devguard fix env` appends missing keys to `.env.example`)
 - Action shipped: **v1.0.2** on Marketplace (rolling tag: `v1`)
 - CI: 4 jobs, all green (`PHP 8.2`, `PHP 8.3`, `action-smoke-pass`, `action-smoke-fail`)
-- Tests: 116 passed, 312 assertions
+- Tests: 122 passed, 328 assertions
 - Real-world tested: yes, surfaced and fixed real issues on Ahmed's Laravel project (joodv2)
 - **Major event 2026-04-20**: full git-history rewrite — every `Co-Authored-By: Claude` trailer stripped from all 12 commits, all 8 tags force-pushed. Existing `composer.lock` references to old SHAs need `composer update ahmedanbar/devguard` to recover.
 - Packagist auto-update webhook: **STILL TBD** — verify at https://packagist.org/packages/ahmedanbar/devguard
