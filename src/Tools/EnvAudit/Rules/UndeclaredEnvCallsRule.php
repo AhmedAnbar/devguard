@@ -82,9 +82,13 @@ final class UndeclaredEnvCallsRule implements RuleInterface, FixableInterface
                 ->ignoreVCS(true);
 
             foreach ($files as $file) {
-                $scannedAny = true;
                 $abs = $file->getRealPath() ?: $file->getPathname();
                 $relPath = $this->relativePath($ctx, $abs);
+                // Honor --changed-only: skip files outside the changed set.
+                if (! $ctx->shouldScan($relPath)) {
+                    continue;
+                }
+                $scannedAny = true;
                 $ast = $this->ast->parseFile($abs, $parseError);
                 if ($ast === null) {
                     // Surface the skip rather than silently dropping a file.
@@ -108,12 +112,12 @@ final class UndeclaredEnvCallsRule implements RuleInterface, FixableInterface
         }
 
         if ($results === []) {
-            return [RuleResult::pass(
-                $this->name(),
-                $scannedAny
-                    ? 'All env() calls reference declared keys'
-                    : 'Skipped — no scannable source directories (app/config/bootstrap/database/routes)'
-            )];
+            $emptyMessage = $scannedAny
+                ? 'All env() calls reference declared keys'
+                : ($ctx->isChangedOnly()
+                    ? 'No changed PHP files in scope (app/config/bootstrap/database/routes)'
+                    : 'Skipped — no scannable source directories (app/config/bootstrap/database/routes)');
+            return [RuleResult::pass($this->name(), $emptyMessage)];
         }
 
         return $results;

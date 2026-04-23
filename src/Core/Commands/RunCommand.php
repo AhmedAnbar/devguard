@@ -7,6 +7,7 @@ namespace DevGuard\Core\Commands;
 use DevGuard\Core\Baseline\BaselineLoader;
 use DevGuard\Core\Baseline\IgnoreAnnotationParser;
 use DevGuard\Core\Baseline\ResultFilter;
+use DevGuard\Core\ChangedFilesResolver;
 use DevGuard\Core\Output\ConsoleRenderer;
 use DevGuard\Core\Output\HtmlRenderer;
 use DevGuard\Core\Output\SarifBuilder;
@@ -42,6 +43,7 @@ final class RunCommand extends Command
             ->addOption('no-open', null, InputOption::VALUE_NONE, 'With --html: do not auto-open the report in your browser')
             ->addOption('no-baseline', null, InputOption::VALUE_NONE, 'Skip the baseline filter (show every issue, including baselined ones)')
             ->addOption('baseline', null, InputOption::VALUE_REQUIRED, 'Path to baseline file (default: devguard-baseline.json in project root)')
+            ->addOption('changed-only', null, InputOption::VALUE_OPTIONAL, 'Only scan files changed in `git diff <spec>`. Empty value defaults to HEAD (uncommitted). Use --cached for staged-only, origin/main for PR diffs.', false)
             ->addOption('path', 'p', InputOption::VALUE_REQUIRED, 'Project path (default: current directory)', getcwd());
     }
 
@@ -80,11 +82,33 @@ final class RunCommand extends Command
             return Command::INVALID;
         }
 
+        // Resolve --changed-only BEFORE we build the context, since the
+        // changed-files list is part of the context's data. Bail with a
+        // clear error if git is unhappy (not-a-repo / bad spec).
         try {
-            $context = ProjectContext::detect($path);
+            $changedFiles = $this->resolveChangedFiles($input, $path);
         } catch (\Throwable $e) {
             $output->writeln('<fg=red>Error:</> ' . $e->getMessage());
             return Command::INVALID;
+        }
+
+        try {
+            $context = ProjectContext::detect($path, $changedFiles);
+        } catch (\Throwable $e) {
+            $output->writeln('<fg=red>Error:</> ' . $e->getMessage());
+            return Command::INVALID;
+        }
+
+        // Surface --changed-only state once at the top so users understand
+        // why their report might be shorter than usual. Console-only;
+        // JSON/SARIF/HTML consumers see the filtered results without prose.
+        if ($changedFiles !== null && ! $jsonMode && ! $htmlMode) {
+            $count = count($changedFiles);
+            $output->writeln(sprintf(
+                '<fg=cyan>--changed-only</> in effect: %d file%s in scope.',
+                $count,
+                $count === 1 ? '' : 's'
+            ));
         }
 
         $tools = $toolName === 'all'
@@ -170,6 +194,24 @@ final class RunCommand extends Command
     }
 
     /**
+     * Resolve --changed-only to a list of project-relative paths.
+     * Returns null when the flag wasn't passed (scan everything).
+     *
+     * @return array<int, string>|null
+     */
+    private function resolveChangedFiles(InputInterface $input, string $path): ?array
+    {
+        $opt = $input->getOption('changed-only');
+        if ($opt === false) {
+            return null;
+        }
+        // VALUE_OPTIONAL: empty string when --changed-only with no value,
+        // a string when --changed-only=spec. Default to HEAD (uncommitted).
+        $spec = is_string($opt) && $opt !== '' ? $opt : 'HEAD';
+        return (new ChangedFilesResolver())->resolve($path, $spec);
+    }
+
+    /**
      * Build the baseline + annotation filter. Returns null when --no-baseline
      * is set OR no baseline file exists (so we don't pay the cost when the
      * feature isn't being used).
@@ -217,7 +259,7 @@ final class RunCommand extends Command
      */
     private function writeHtmlReport(array $reports, string $projectPath, string $path, OutputInterface $output, bool $autoOpen): int
     {
-        $version = '0.7.2';
+        $version = '0.8.0';
         try {
             $installed = InstalledVersions::getPrettyVersion('ahmedanbar/devguard');
             if (is_string($installed) && $installed !== '') {
@@ -292,7 +334,7 @@ final class RunCommand extends Command
 
     private function resolveVersion(): string
     {
-        $version = '0.7.2'; // synced manually with bin/devguard fallback
+        $version = '0.8.0'; // synced manually with bin/devguard fallback
         try {
             $installed = InstalledVersions::getPrettyVersion('ahmedanbar/devguard');
             if (is_string($installed) && $installed !== '') {

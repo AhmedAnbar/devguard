@@ -38,10 +38,15 @@ final class DirectDbInControllerRule implements RuleInterface
 
         $results = [];
         $offenders = 0;
+        $scannedAny = false;
 
         foreach ($this->scanner->controllers($ctx) as $file) {
             $absolute = $file->getRealPath() ?: $file->getPathname();
             $relative = $this->scanner->relativePath($ctx, $file);
+            if (! $ctx->shouldScan($relative)) {
+                continue;
+            }
+            $scannedAny = true;
             $tree = $this->ast->parseFile($absolute, $parseError);
             if ($tree === null) {
                 // Surface the skip — see lesson #21 in CLAUDE.md.
@@ -77,7 +82,9 @@ final class DirectDbInControllerRule implements RuleInterface
         if ($offenders === 0) {
             $results[] = RuleResult::pass(
                 $this->name(),
-                'No direct DB calls in controllers'
+                $ctx->isChangedOnly() && ! $scannedAny
+                    ? 'No changed controllers in scope'
+                    : 'No direct DB calls in controllers'
             );
         }
 

@@ -31,6 +31,7 @@ Failed. Address the errors above before deploying.
 - **Git hook installer** — `devguard install-hook` adds a pre-push (or pre-commit) gate so checks block bad commits before they ship.
 - **Auto-fix** — `devguard fix deps` runs `composer update <pkg>` for each advisory; `devguard fix env` writes missing keys from `.env.example` (with backup).
 - **Baseline file + `@devguard-ignore` annotations** — `devguard baseline` records existing issues so future runs only surface NEW ones. Adopt on legacy projects without fixing 200 things on day one.
+- **`--changed-only` mode** — scan only files in `git diff` instead of every PHP file. Pre-commit hooks become sub-second on big projects.
 - **Interactive menu** when run with no arguments.
 - **JSON output** for CI/CD pipelines.
 - **HTML report** — `--html` writes a self-contained, styled page (no CDN, no JS) you can email, archive as a CI artifact, or open locally.
@@ -84,6 +85,10 @@ devguard install-hook --type=pre-commit --tools=deploy --force
 devguard baseline                     # Record current issues as the accepted baseline
 devguard baseline --output=audit.json # Custom baseline path
 devguard run all --no-baseline        # Bypass baseline filtering, see everything
+
+devguard run all --changed-only       # Only scan files in `git diff HEAD` (uncommitted)
+devguard run all --changed-only="--cached"      # Staged only — for pre-commit hooks
+devguard run all --changed-only=origin/main     # PR diff — for CI
 
 devguard fix deps                     # Interactive: prompts per CVE
 devguard fix env --dry-run            # Preview the plan, change nothing

@@ -30,8 +30,18 @@ final class FatControllerRule implements RuleInterface
 
         $results = [];
         $offenders = 0;
+        $scannedAny = false;
 
         foreach ($this->scanner->controllers($ctx) as $file) {
+            $relative = $this->scanner->relativePath($ctx, $file);
+            // Honor --changed-only: skip controllers not in the changed set.
+            // shouldScan() returns true unconditionally when the flag isn't
+            // active, so non-changed-only runs are unaffected.
+            if (! $ctx->shouldScan($relative)) {
+                continue;
+            }
+            $scannedAny = true;
+
             $contents = (string) file_get_contents($file->getRealPath() ?: $file->getPathname());
             $lines = substr_count($contents, "\n") + 1;
 
@@ -40,7 +50,7 @@ final class FatControllerRule implements RuleInterface
                 $results[] = RuleResult::fail(
                     $this->name(),
                     sprintf('Controller is too large (%d lines, max %d)', $lines, $this->maxLines),
-                    $this->scanner->relativePath($ctx, $file),
+                    $relative,
                     1,
                     'Extract methods into Service classes or Form Requests to slim the controller.'
                 );
@@ -50,7 +60,9 @@ final class FatControllerRule implements RuleInterface
         if ($offenders === 0) {
             $results[] = RuleResult::pass(
                 $this->name(),
-                "All controllers are within {$this->maxLines} lines"
+                $ctx->isChangedOnly() && ! $scannedAny
+                    ? 'No changed controllers in scope'
+                    : "All controllers are within {$this->maxLines} lines"
             );
         }
 

@@ -36,10 +36,15 @@ final class BusinessLogicInControllerRule implements RuleInterface
 
         $results = [];
         $offenders = 0;
+        $scannedAny = false;
 
         foreach ($this->scanner->controllers($ctx) as $file) {
             $absolute = $file->getRealPath() ?: $file->getPathname();
             $relative = $this->scanner->relativePath($ctx, $file);
+            if (! $ctx->shouldScan($relative)) {
+                continue;
+            }
+            $scannedAny = true;
             $tree = $this->ast->parseFile($absolute, $parseError);
             if ($tree === null) {
                 // Surface the skip — silent fallbacks hide real bugs (lesson #21).
@@ -98,7 +103,9 @@ final class BusinessLogicInControllerRule implements RuleInterface
         if ($offenders === 0) {
             $results[] = RuleResult::pass(
                 $this->name(),
-                "All controller methods are below complexity {$this->warnThreshold}"
+                $ctx->isChangedOnly() && ! $scannedAny
+                    ? 'No changed controllers in scope'
+                    : "All controller methods are below complexity {$this->warnThreshold}"
             );
         }
 
