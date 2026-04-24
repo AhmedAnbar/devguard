@@ -37,8 +37,14 @@ final class ComposerAuditRule implements RuleInterface, FixableInterface
             )];
         }
 
+        // --locked tells composer to audit the packages pinned in composer.lock
+        // rather than the ones currently installed in vendor/. Without this flag,
+        // running in CI (where nobody ran `composer install`) yields composer's
+        // "No packages — skipping audit" because vendor/composer/installed.json
+        // doesn't exist. --locked requires composer 2.4+, same as the audit
+        // command itself, so there is no version-support regression.
         $process = new Process(
-            [$this->composerBinary, 'audit', '--format=json', '--no-interaction'],
+            [$this->composerBinary, 'audit', '--locked', '--format=json', '--no-interaction'],
             $ctx->rootPath
         );
         $process->setTimeout((float) $this->timeoutSeconds);
@@ -252,8 +258,10 @@ final class ComposerAuditRule implements RuleInterface, FixableInterface
      */
     private function runAudit(ProjectContext $ctx): ?array
     {
+        // Mirror the run() invocation — --locked so proposeFixes also works
+        // without vendor/ being installed.
         $process = new Process(
-            [$this->composerBinary, 'audit', '--format=json', '--no-interaction'],
+            [$this->composerBinary, 'audit', '--locked', '--format=json', '--no-interaction'],
             $ctx->rootPath
         );
         $process->setTimeout((float) $this->timeoutSeconds);
