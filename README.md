@@ -1,6 +1,14 @@
 # DevGuard
 
-A modular CLI toolkit for Laravel projects. Audits production-readiness and enforces clean architecture in under 2 seconds.
+[![Latest version on Packagist](https://img.shields.io/packagist/v/ahmedanbar/devguard.svg?style=flat-square)](https://packagist.org/packages/ahmedanbar/devguard)
+[![CI status](https://img.shields.io/github/actions/workflow/status/AhmedAnbar/devguard/ci.yml?branch=main&style=flat-square&label=tests)](https://github.com/AhmedAnbar/devguard/actions)
+[![PHP version](https://img.shields.io/packagist/php-v/ahmedanbar/devguard.svg?style=flat-square)](https://packagist.org/packages/ahmedanbar/devguard)
+[![Downloads](https://img.shields.io/packagist/dt/ahmedanbar/devguard.svg?style=flat-square)](https://packagist.org/packages/ahmedanbar/devguard)
+[![License](https://img.shields.io/packagist/l/ahmedanbar/devguard.svg?style=flat-square)](LICENSE)
+
+**A modular CLI toolkit for Laravel projects. Audits production-readiness, clean architecture, env consistency, and dependency CVEs — in under 2 seconds.**
+
+📖 **Full documentation: [github.com/AhmedAnbar/devguard/wiki](https://github.com/AhmedAnbar/devguard/wiki)** — installation, every command, every rule, CI recipes, troubleshooting.
 
 ```
 $ devguard run deploy
@@ -53,11 +61,38 @@ composer require --dev ahmedanbar/devguard
 ### Globally
 
 ```bash
-composer global require ahmedanbar/devguard
+composer global require "ahmedanbar/devguard:^0.1 || ^0.2 || ^0.3 || ^0.4 || ^0.5 || ^0.6 || ^0.7 || ^0.8"
 devguard
 ```
 
+The OR-chain is required for 0.x packages — Composer's caret operator pins to the *minor*, not the major. ([Why?](https://github.com/AhmedAnbar/devguard/wiki/Troubleshooting#the-version-pin-trap))
+
 Make sure `~/.composer/vendor/bin` is on your `PATH`.
+
+### As a GitHub Action (CI-only — no Composer install needed)
+
+```yaml
+- uses: actions/checkout@v4
+
+- name: Prepare .env for audit
+  run: |
+    cp .env.example .env
+    sed -i "s|^APP_KEY=.*|APP_KEY=base64:$(openssl rand -base64 32)|" .env
+
+- uses: AhmedAnbar/devguard-action@v1
+  with:
+    sarif-output: devguard.sarif
+
+- uses: github/codeql-action/upload-sarif@v3
+  if: always()
+  with:
+    sarif_file: devguard.sarif
+    category: devguard
+```
+
+Full setup, options, and Code Scanning integration: [GitHub Actions in the wiki](https://github.com/AhmedAnbar/devguard/wiki/GitHub-Actions).
+
+For other CI systems (GitLab CI, Bitbucket, Jenkins, CircleCI), see [Other CI Systems](https://github.com/AhmedAnbar/devguard/wiki/Other-CI-Systems).
 
 ---
 
